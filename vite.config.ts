@@ -12,22 +12,22 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       proxy: {
         '/iclock/api': {
-          target: 'http://qssun.dyndns.org:8085',
+          target: 'https://hr-bnyq.onrender.com',
           changeOrigin: true,
           secure: false
         },
         '/personnel/api': {
-          target: 'http://qssun.dyndns.org:8085',
+          target: 'https://hr-bnyq.onrender.com',
           changeOrigin: true,
           secure: false
         },
         '/att/api': {
-          target: 'http://qssun.dyndns.org:8085',
+          target: 'https://hr-bnyq.onrender.com',
           changeOrigin: true,
           secure: false
         },
         '/jwt-api-token-auth': {
-          target: 'http://qssun.dyndns.org:8085',
+          target: 'https://hr-bnyq.onrender.com',
           changeOrigin: true,
           secure: false
         }
