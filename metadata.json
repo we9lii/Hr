@@ -1,0 +1,7 @@
+{
+  "name": "نظام إدارة الحضور والإنصراف الذكي",
+  "description": "Smart Attendance Management System utilizing GPS and Biometric API integration.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

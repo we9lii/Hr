@@ -1,0 +1,392 @@
+import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device } from '../types';
+
+// Real API Configuration
+const API_CONFIG = {
+  baseUrl: '/iclock/api',
+  username: 'admin',
+  password: 'Admin@123', 
+};
+
+let AUTH_TOKEN: string | null = null;
+
+const ensureAuthToken = async (): Promise<string> => {
+  if (AUTH_TOKEN) return AUTH_TOKEN;
+  const response = await fetch(`/jwt-api-token-auth/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: API_CONFIG.username, password: API_CONFIG.password })
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Auth Error: ${response.status} - ${t}`);
+  }
+  const data = await response.json();
+  AUTH_TOKEN = data?.token || null;
+  if (!AUTH_TOKEN) throw new Error('Auth token missing');
+  return AUTH_TOKEN;
+};
+
+// Helper to generate JWT Headers
+const getHeaders = async () => {
+    const token = await ensureAuthToken();
+    return {
+        'Authorization': `JWT ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    };
+};
+
+/**
+ * LOGIN USER
+ * Handles specific hardcoded super users and general API authentication
+ */
+export const loginUser = async (username: string, role: 'ADMIN' | 'EMPLOYEE', password?: string): Promise<User> => {
+    // 1. Check for Super Admin (we9li)
+    if (role === 'ADMIN' && username === 'we9li' && password === '123') {
+        return {
+            id: 'SA-001',
+            name: 'Super Admin (we9li)',
+            role: 'ADMIN',
+            avatar: 'https://ui-avatars.com/api/?name=W+e&background=1e40af&color=fff&bold=true'
+        };
+    }
+
+    // 2. Check for Super Employee (we9l)
+    if (role === 'EMPLOYEE' && username === 'we9l' && password === '123') {
+        return {
+            id: 'SE-001',
+            name: 'Super Employee (we9l)',
+            role: 'EMPLOYEE',
+            department: 'الإدارة العليا',
+            position: 'مشرف عام',
+            avatar: 'https://ui-avatars.com/api/?name=we9l&background=059669&color=fff&bold=true'
+        };
+    }
+
+    // 3. Fallback for other users (Optional: strict mode currently rejects others)
+    // To enable general access, we would ping the server here.
+    // For now, based on your request to "Add account", we strictly validate these or throw error.
+    
+    // Simulate a check or throw error for invalid credentials
+    throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+};
+
+/**
+ * FETCH ATTENDANCE LOGS (REAL)
+ * Connects to http://qssun.dyndns.org:8085/personnel/api/transactions/
+ */
+export const fetchAttendanceLogs = async (targetDate: Date = new Date()): Promise<AttendanceRecord[]> => {
+  try {
+    const headers = await getHeaders();
+    let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time`;
+    const out: AttendanceRecord[] = [];
+    const targetStr = targetDate.toDateString();
+    for (let i = 0; i < 50; i++) {
+      const response = await fetch(url, { method: 'GET', headers });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server Error: ${response.status} - ${errorText}`);
+      }
+      const raw = await response.json();
+      const list: any[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : Array.isArray(raw?.results)
+            ? raw.results
+            : [];
+
+      if (list.length === 0 && i === 0) {
+        throw new Error('لا توجد سجلات حديثة من الخادم');
+      }
+
+      let oldestDateStrOnPage: string | null = null;
+      list.forEach((item: any, index: number) => {
+        const punchTime = new Date(item.punch_time || item.time || item.timestamp);
+        const pageStr = punchTime.toDateString();
+        if (!oldestDateStrOnPage) oldestDateStrOnPage = pageStr;
+        else {
+          // keep oldest (given ordering=-punch_time, iteration preserves order)
+          oldestDateStrOnPage = pageStr;
+        }
+        if (pageStr === targetStr) {
+          const isLate = punchTime.getHours() > 8 || (punchTime.getHours() === 8 && punchTime.getMinutes() > 15);
+          out.push({
+            id: item.id ? String(item.id) : `log-${i}-${index}`,
+            employeeId: item.emp_code || item.user_id || 'UNKNOWN',
+            employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
+            timestamp: punchTime.toISOString(),
+            type: ((item.punch_state === '0' || item.punch_state === 'CHECK_IN') ? 'CHECK_IN' : 'CHECK_OUT') as 'CHECK_IN' | 'CHECK_OUT',
+            method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE : 
+                    item.verify_type_display === 'GPS' ? AttendanceMethod.GPS : 
+                    AttendanceMethod.FINGERPRINT,
+            status: isLate ? 'LATE' : 'ON_TIME',
+            location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
+              lat: parseFloat(item.latitude),
+              lng: parseFloat(item.longitude),
+              address: item.area_alias || 'موقع مسجل'
+            } : undefined),
+            deviceSn: item.terminal_sn || undefined,
+            deviceAlias: item.terminal_alias || item.area_alias || undefined
+          } as AttendanceRecord);
+        }
+      });
+
+      const next: string | undefined = raw?.next;
+      const shouldStop = !!oldestDateStrOnPage && oldestDateStrOnPage !== targetStr;
+      if (shouldStop || !next) {
+        break;
+      }
+      url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
+    }
+    return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  } catch (error) {
+    console.error('Fetch Logs Error:', error);
+    throw error;
+  }
+};
+
+export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): Promise<AttendanceRecord[]> => {
+  const headers = await getHeaders();
+  let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time`;
+  const out: AttendanceRecord[] = [];
+  const startStr = startDate.toDateString();
+  const endStr = endDate.toDateString();
+  for (let i = 0; i < 50; i++) {
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) {
+      const t = await response.text();
+      throw new Error(`Server Error: ${response.status} - ${t}`);
+    }
+    const raw = await response.json();
+    const list: any[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.results)
+          ? raw.results
+          : [];
+    let oldestDateStrOnPage: string | null = null;
+    for (let index = 0; index < list.length; index++) {
+      const item = list[index];
+      const punchTime = new Date(item.punch_time || item.time || item.timestamp);
+      const pageStr = punchTime.toDateString();
+      oldestDateStrOnPage = pageStr;
+      if (punchTime >= startDate && punchTime <= endDate) {
+        const isLate = punchTime.getHours() > 8 || (punchTime.getHours() === 8 && punchTime.getMinutes() > 15);
+        out.push({
+          id: item.id ? String(item.id) : `log-${i}-${index}`,
+          employeeId: item.emp_code || item.user_id || 'UNKNOWN',
+          employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
+          timestamp: punchTime.toISOString(),
+          type: ((item.punch_state === '0' || item.punch_state === 'CHECK_IN') ? 'CHECK_IN' : 'CHECK_OUT') as 'CHECK_IN' | 'CHECK_OUT',
+          method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE : 
+                  item.verify_type_display === 'GPS' ? AttendanceMethod.GPS : 
+                  AttendanceMethod.FINGERPRINT,
+          status: isLate ? 'LATE' : 'ON_TIME',
+          location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
+            lat: parseFloat(item.latitude),
+            lng: parseFloat(item.longitude),
+            address: item.area_alias || 'موقع مسجل'
+          } : undefined),
+          deviceSn: item.terminal_sn || undefined,
+          deviceAlias: item.terminal_alias || item.area_alias || undefined
+        } as AttendanceRecord);
+      }
+    }
+    const next: string | undefined = raw?.next;
+    const shouldStop = !!oldestDateStrOnPage && oldestDateStrOnPage !== endStr && oldestDateStrOnPage !== startStr && new Date(oldestDateStrOnPage) < startDate;
+    if (shouldStop || !next) {
+      break;
+    }
+    url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
+  }
+  return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+};
+
+/**
+ * SUBMIT GPS ATTENDANCE (REAL)
+ * Posts data to the API
+ */
+export const submitGPSAttendance = async (
+  employeeId: string, 
+  lat: number, 
+  lng: number,
+  type: 'CHECK_IN' | 'CHECK_OUT'
+): Promise<boolean> => {
+  try {
+      const payload = {
+          emp_code: employeeId,
+          punch_time: new Date().toISOString(), // Or specific format 'YYYY-MM-DD HH:mm:ss'
+          latitude: lat,
+          longitude: lng,
+          punch_state: type === 'CHECK_IN' ? '0' : '1',
+          verify_mode: 'GPS' // Custom flag for your middleware
+      };
+
+      const headers = await getHeaders();
+      const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+          throw new Error("Failed to submit attendance");
+      }
+      
+      return true;
+  } catch (error) {
+      console.error("GPS Submit Error:", error);
+      throw error;
+  }
+};
+
+export const submitBiometricAttendance = async (
+  employeeId: string,
+  type: 'CHECK_IN' | 'CHECK_OUT',
+  terminalSn: string,
+  verifyType: 'FINGERPRINT' | 'FACE' | 'PALM' | 'CARD' = 'FINGERPRINT'
+): Promise<boolean> => {
+  try {
+    const payload: Record<string, any> = {
+      emp_code: employeeId,
+      punch_time: new Date().toISOString(),
+      punch_state: type === 'CHECK_IN' ? '0' : '1',
+      verify_mode: verifyType
+    };
+    if (terminalSn) {
+      payload.terminal_sn = terminalSn;
+    }
+    const headers = await getHeaders();
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      throw new Error('Failed to submit biometric attendance');
+    }
+    return true;
+  } catch (error) {
+    console.error('Biometric Submit Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * STATISTICS CALCULATOR
+ * Pure utility function, works on the data array passed to it
+ */
+export const getStats = (records: AttendanceRecord[]): DashboardStats => {
+  const todayStr = new Date().toDateString();
+  const todayRecords = records.filter(r => new Date(r.timestamp).toDateString() === todayStr);
+  
+  const uniquePresent = new Set(todayRecords.map(r => r.employeeId)).size;
+  const late = todayRecords.filter(r => r.type === 'CHECK_IN' && r.status === 'LATE').length;
+  
+  // Total employees should ideally come from an 'employees' endpoint. 
+  // Calculating dynamic count based on unique IDs in logs + buffer or static base.
+  const totalEmployeesEst = Math.max(uniquePresent + 5, 20); 
+
+  return {
+    totalEmployees: totalEmployeesEst, 
+    presentToday: uniquePresent,
+    lateToday: late,
+    onLeave: totalEmployeesEst - uniquePresent
+  };
+};
+
+export const fetchDevices = async (): Promise<Device[]> => {
+  const headers = await getHeaders();
+  const response = await fetch(`${API_CONFIG.baseUrl}/terminals/?page_size=200&ordering=-last_activity`, {
+    method: 'GET',
+    headers
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Server Error: ${response.status} - ${t}`);
+  }
+  const raw = await response.json();
+  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+  return list.map((it: any) => ({
+    id: String(it.id),
+    sn: String(it.sn),
+    alias: it.alias || it.terminal_alias || undefined,
+    areaName: (it.area && (it.area.area_name || it.area_name)) || it.area_name || undefined,
+    lastActivity: it.last_activity || undefined
+  }));
+};
+
+export const fetchDeviceEmployees = async (terminalSn: string): Promise<{ empCode: string; empName: string }[]> => {
+  const headers = await getHeaders();
+  const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?page_size=1000&ordering=-punch_time`, {
+    method: 'GET',
+    headers
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Server Error: ${response.status} - ${t}`);
+  }
+  const raw = await response.json();
+  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+  const filtered = list.filter((x: any) => String(x.terminal_sn || '') === terminalSn);
+  const map = new Map<string, string>();
+  filtered.forEach((x: any) => {
+    const code = String(x.emp_code || x.user_id || 'UNKNOWN');
+    const name = String(x.emp_name || `${x.first_name || ''} ${x.last_name || ''}`).trim();
+    if (!map.has(code)) map.set(code, name);
+  });
+  return Array.from(map.entries()).map(([empCode, empName]) => ({ empCode, empName }));
+};
+
+export const fetchEmployeeCount = async (): Promise<number> => {
+  const headers = await getHeaders();
+  const response = await fetch(`/personnel/api/employees/?page_size=1`, {
+    method: 'GET',
+    headers
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Server Error: ${response.status} - ${t}`);
+  }
+  const raw = await response.json();
+  const count = (raw && typeof raw.count === 'number') ? raw.count : (Array.isArray(raw) ? raw.length : 0);
+  return count;
+};
+
+export const fetchAllEmployees = async (): Promise<{ code: string; name: string }[]> => {
+  const headers = await getHeaders();
+  let url = `/personnel/api/employees/?page_size=200`;
+  const map = new Map<string, string>();
+  for (let i = 0; i < 50; i++) {
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) {
+      const t = await response.text();
+      throw new Error(`Server Error: ${response.status} - ${t}`);
+    }
+    const raw = await response.json();
+    const list: any[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.results)
+          ? raw.results
+          : [];
+    list.forEach((it: any) => {
+      const code = String(it.emp_code || it.user_id || it.id || '').trim();
+      if (!code) return;
+      const inactive = (it.is_active === false) || (it.active === false) || (String(it.status || '').toLowerCase() === 'inactive') || (String(it.employment_status || '').toLowerCase() === 'terminated');
+      if (inactive) return;
+      const name = String(it.emp_name || `${it.first_name || ''} ${it.last_name || ''}`.trim() || code);
+      if (!map.has(code)) map.set(code, name);
+    });
+    const next: string | undefined = raw?.next;
+    if (next) {
+      url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
+    } else {
+      break;
+    }
+  }
+  return Array.from(map.entries()).map(([code, name]) => ({ code, name }));
+};
