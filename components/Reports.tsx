@@ -1,18 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { AttendanceRecord, Device } from '../types';
 import { fetchDeviceEmployees, fetchAttendanceLogsRange } from '../services/api';
-import {
-  Clock,
-  Download,
-  FileBarChart,
-  Calendar,
-  Filter,
-  TrendingUp,
-  AlertTriangle,
-  MapPin,
-  Briefcase,
-  X
-} from 'lucide-react';
+import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X } from 'lucide-react';
+import { getDeviceConfig } from '../config/shifts';
 
 interface ReportsProps {
   logs: AttendanceRecord[];
@@ -50,40 +40,47 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     setExportConfig(prev => ({ ...prev, start: startDate, end: endDate }));
   }, [startDate, endDate]);
 
-  const calculateDelay = (log: AttendanceRecord): number => {
-    if (log.type !== 'CHECK_IN') return 0;
+  // Helper to calculate delay based on device shifts or default
+  const calculateDelay = (log: AttendanceRecord) => {
+    if (log.type !== 'CHECK_IN' || log.status !== 'LATE') return 0;
 
-    const logDate = new Date(log.timestamp);
-    let target = new Date(logDate);
-    target.setHours(8, 0, 0, 0); // Default 8:00 AM
+    // Resolve config from Code (Static Rules)
+    const deviceConfig = getDeviceConfig({
+      sn: log.deviceSn || 'UNKNOWN_SN',
+      alias: log.deviceAlias
+    });
 
-    // Determine Target Time based on Device Shifts
-    if (log.deviceSn) {
-      const device = devices.find(d => d.sn === log.deviceSn);
-      if (device && device.shifts && device.shifts.length > 0) {
-        // Find closest shift start
-        let bestShiftStart = target;
-        let minDiff = Infinity;
+    const shifts = deviceConfig.shifts;
+    if (!shifts || shifts.length === 0) {
+      // Default fallback if no shifts in config (unlikely given DEFAULT_SHIFTS)
+      const defaultStart = new Date(log.timestamp);
+      defaultStart.setHours(8, 0, 0, 0);
+      const diff = new Date(log.timestamp).getTime() - defaultStart.getTime();
+      return Math.max(0, Math.floor(diff / 60000));
+    }
 
-        device.shifts.forEach(shift => {
-          const [h, m] = shift.start.split(':').map(Number);
-          const sTime = new Date(logDate);
-          sTime.setHours(h, m, 0, 0);
+    const checkInTime = new Date(log.timestamp);
 
-          const diff = Math.abs(logDate.getTime() - sTime.getTime());
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestShiftStart = sTime;
-          }
-        });
-        target = bestShiftStart;
+    // Find closest shift start time
+    let minDiff = Infinity;
+    let lateMinutes = 0;
+
+    shifts.forEach(shift => {
+      const [h, m] = shift.start.split(':').map(Number);
+      const shiftStart = new Date(log.timestamp);
+      shiftStart.setHours(h, m, 0, 0);
+
+      const diff = Math.abs(checkInTime.getTime() - shiftStart.getTime());
+
+      // If this shift is closer than previous best match
+      if (diff < minDiff) {
+        minDiff = diff;
+        const actualLate = checkInTime.getTime() - shiftStart.getTime();
+        lateMinutes = Math.max(0, Math.floor(actualLate / 60000));
       }
-    }
+    });
 
-    if (logDate > target) {
-      return Math.floor((logDate.getTime() - target.getTime()) / 60000);
-    }
-    return 0;
+    return lateMinutes;
   };
 
   const filteredData = useMemo(() => {

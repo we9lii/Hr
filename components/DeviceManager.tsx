@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Device } from '../types';
 import { fetchDevices } from '../services/api';
-import { Settings, Save, Clock, Plus, Trash2, Smartphone, Edit2, CheckCircle2 } from 'lucide-react';
+import { getDeviceConfig } from '../config/shifts';
+import { Settings, Smartphone, Clock, Code2, AlertCircle } from 'lucide-react';
 
 interface DeviceManagerProps {
     onDevicesUpdated?: (devices: Device[]) => void;
@@ -12,9 +13,6 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
     const [loading, setLoading] = useState(false);
     const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
 
-    // Local state for edits before save
-    const [edits, setEdits] = useState<Record<string, { alias: string; shifts: { start: string; end: string }[] }>>({});
-
     useEffect(() => {
         loadDevices();
     }, []);
@@ -22,32 +20,20 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
     const loadDevices = async () => {
         setLoading(true);
         try {
-            // 1. Fetch from API
             const apiDevices = await fetchDevices();
 
-            // 2. Load Local Config
-            const localConfigStr = localStorage.getItem('device_configs');
-            const localConfig = localConfigStr ? JSON.parse(localConfigStr) : {};
-
-            // 3. Merge
-            const merged = apiDevices.map(d => ({
-                ...d,
-                alias: localConfig[d.sn]?.alias || d.alias,
-                shifts: localConfig[d.sn]?.shifts || []
-            }));
+            // Merge with Static Code Configuration
+            const merged = apiDevices.map(d => {
+                const config = getDeviceConfig(d);
+                return {
+                    ...d,
+                    alias: config.alias,
+                    shifts: config.shifts
+                };
+            });
 
             setDevices(merged);
             if (onDevicesUpdated) onDevicesUpdated(merged);
-
-            // Initialize edits state with current values
-            const initialEdits: any = {};
-            merged.forEach(d => {
-                initialEdits[d.sn] = {
-                    alias: d.alias || '',
-                    shifts: d.shifts && d.shifts.length > 0 ? d.shifts : [{ start: '08:00', end: '16:00' }]
-                };
-            });
-            setEdits(initialEdits);
 
         } catch (error) {
             console.error("Failed to load devices", error);
@@ -56,70 +42,21 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
         }
     };
 
-    const handleSave = (sn: string) => {
-        const edit = edits[sn];
-        if (!edit) return;
-
-        // Save to LocalStorage
-        const localConfigStr = localStorage.getItem('device_configs');
-        const localConfig = localConfigStr ? JSON.parse(localConfigStr) : {};
-
-        localConfig[sn] = {
-            alias: edit.alias,
-            shifts: edit.shifts
-        };
-
-        localStorage.setItem('device_configs', JSON.stringify(localConfig));
-
-        // Update Local State UI
-        const updatedDevices = devices.map(d => {
-            if (d.sn === sn) {
-                return { ...d, alias: edit.alias, shifts: edit.shifts };
-            }
-            return d;
-        });
-        setDevices(updatedDevices);
-        if (onDevicesUpdated) onDevicesUpdated(updatedDevices);
-
-        // Collapse after save
-        setExpandedDevice(null);
-    };
-
-    const updateEdit = (sn: string, field: string, value: any) => {
-        setEdits(prev => ({
-            ...prev,
-            [sn]: { ...prev[sn], [field]: value }
-        }));
-    };
-
-    const updateShift = (sn: string, index: number, field: 'start' | 'end', value: string) => {
-        const currentheader = edits[sn].shifts ? [...edits[sn].shifts] : [];
-        if (!currentheader[index]) return;
-        currentheader[index] = { ...currentheader[index], [field]: value };
-        updateEdit(sn, 'shifts', currentheader);
-    };
-
-    const addShift = (sn: string) => {
-        const current = edits[sn].shifts || [];
-        if (current.length >= 2) return; // Limit to 2 shifts
-        updateEdit(sn, 'shifts', [...current, { start: '16:00', end: '22:00' }]);
-    };
-
-    const removeShift = (sn: string, index: number) => {
-        const current = [...edits[sn].shifts];
-        current.splice(index, 1);
-        updateEdit(sn, 'shifts', current);
-    };
-
     return (
         <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
-            <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/20 text-white">
-                    <Settings size={20} />
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-xl shadow-lg shadow-purple-500/20 text-white">
+                        <Code2 size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-white">إعدادات الأجهزة (Code Mode)</h2>
+                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">يتم إدارة الورديات والمسميات مركزياً عبر ملف <code>config/shifts.ts</code></p>
+                    </div>
                 </div>
-                <div>
-                    <h2 className="text-xl font-bold text-slate-800 dark:text-white">إعدادات الأجهزة والورديات</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">تخصيص مسميات الأجهزة وأوقات العمل لحساب التأخير</p>
+                <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 px-3 py-1.5 rounded-lg flex items-center gap-2 text-amber-700 dark:text-amber-400 text-xs font-bold">
+                    <AlertCircle size={14} />
+                    وضع القراءة فقط
                 </div>
             </div>
 
@@ -128,15 +65,16 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {devices.map(device => {
-                        const edit = edits[device.sn] || { alias: '', shifts: [] };
+                        // Re-calculate config to ensure UI is in sync
+                        const config = getDeviceConfig(device);
                         const isExpanded = expandedDevice === device.sn;
 
                         return (
                             <div
                                 key={device.sn}
                                 className={`bg-white dark:bg-[#1e293b] rounded-2xl border transition-all duration-300 relative overflow-hidden group ${isExpanded
-                                        ? 'col-span-1 md:col-span-2 lg:col-span-3 border-blue-500 shadow-xl shadow-blue-500/10 ring-1 ring-blue-500/50 z-10'
-                                        : 'border-slate-200 dark:border-slate-800 hover:border-blue-400/50 hover:shadow-md'
+                                        ? 'col-span-1 md:col-span-2 lg:col-span-3 border-purple-500 shadow-xl shadow-purple-500/10 ring-1 ring-purple-500/50 z-10'
+                                        : 'border-slate-200 dark:border-slate-800 hover:border-purple-400/50 hover:shadow-md'
                                     }`}
                             >
                                 {/* Header / Summary View */}
@@ -145,15 +83,16 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                                     onClick={() => setExpandedDevice(isExpanded ? null : device.sn)}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isExpanded ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isExpanded ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
                                             }`}>
                                             <Smartphone size={18} />
                                         </div>
                                         <div>
                                             <div className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                                                {device.alias || `جهاز ${device.sn}`}
-                                                {!isExpanded && (
-                                                    <Edit2 size={12} className="opacity-0 group-hover:opacity-50 transition-opacity text-slate-400" />
+                                                {config.alias || device.alias || `جهاز ${device.sn}`}
+                                                {/* Badge if matched by rule vs default */}
+                                                {config.alias && config.alias !== device.alias && config.alias !== `جهاز ${device.sn}` && (
+                                                    <span className="text-[9px] bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded-md">Matched</span>
                                                 )}
                                             </div>
                                             <div className="text-[10px] text-slate-400 font-mono">{device.sn}</div>
@@ -161,106 +100,55 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                                     </div>
 
                                     <div className="flex items-center gap-3">
-                                        <div className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${edit.shifts.length > 0
+                                        <div className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${config.shifts.length > 0
                                                 ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30 dark:text-emerald-400'
                                                 : 'bg-slate-50 text-slate-400 border-slate-100 dark:bg-slate-800 dark:border-slate-700'
                                             }`}>
-                                            {edit.shifts.length > 0 ? (edit.shifts.length === 2 ? 'فترتين' : 'فترة واحدة') : 'غير محدد'}
+                                            {config.shifts.length > 0 ? (config.shifts.length === 2 ? 'فترتين' : 'فترة واحدة') : 'غير محدد'}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Expanded / Edit View */}
+                                {/* Expanded View (Read Only) */}
                                 {isExpanded && (
                                     <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 p-5 animate-fade-in backdrop-blur-sm">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            {/* Column 1: Alias */}
+                                            {/* Column 1: Info */}
                                             <div>
-                                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 block">اسم الجهاز (الفرع)</label>
-                                                <div className="relative">
-                                                    <input
-                                                        type="text"
-                                                        value={edit.alias}
-                                                        onChange={(e) => updateEdit(device.sn, 'alias', e.target.value)}
-                                                        placeholder="أدخل اسماً مميزاً للجهاز..."
-                                                        className="w-full pl-3 pr-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/50 outline-none transition-shadow"
-                                                    />
+                                                <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-4 block">تفاصيل الجهاز</h4>
+                                                <div className="space-y-3">
+                                                    <div className="flex justify-between p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                        <span className="text-xs text-slate-500">الاسم المعرف (Code):</span>
+                                                        <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">{config.alias}</span>
+                                                    </div>
+                                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/20 rounded-xl text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                                                        هذا الجهاز يتبع قواعد التكوين في الملف المصدري. لتعديل الإعدادات، يرجى مراجعة المبرمج أو تعديل ملف <code>config/shifts.ts</code>.
+                                                    </div>
                                                 </div>
-                                                <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                                                    يساعدك الاسم المستعار في تمييز الأجهزة في التقارير (مثال: الفرع الرئيسي - مدخل الموظفين).
-                                                </p>
                                             </div>
 
-                                            {/* Column 2: Shifts */}
+                                            {/* Column 2: Shifts (Read Only) */}
                                             <div>
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400">إعداد الفترات والدوام</label>
-                                                    {edit.shifts.length < 2 && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); addShift(device.sn); }}
-                                                            className="text-[10px] font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
-                                                        >
-                                                            <Plus size={12} />
-                                                            إضافة فترة
-                                                        </button>
-                                                    )}
-                                                </div>
-
+                                                <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2">
+                                                    <Clock size={14} />
+                                                    أوقات العمل المعتمدة
+                                                </h4>
                                                 <div className="space-y-2">
-                                                    {edit.shifts.length === 0 ? (
-                                                        <div className="p-4 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-center">
-                                                            <Clock size={20} className="mx-auto text-slate-300 mb-2" />
-                                                            <p className="text-xs text-slate-400">لم يتم تحديد فترات.<br />سيتم احتساب التأخير من 8:00 ص.</p>
-                                                        </div>
-                                                    ) : (
-                                                        edit.shifts.map((shift, idx) => (
-                                                            <div key={idx} className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative group/shift">
-                                                                <div className={`w-1.5 self-stretch rounded-full ${idx === 0 ? 'bg-orange-400' : 'bg-indigo-400'}`}></div>
-                                                                <div className="flex-1">
-                                                                    <div className="text-[10px] text-slate-400 font-bold mb-1">{idx === 0 ? 'الفترة الأولى' : 'الفترة الثانية'}</div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="bg-slate-50 dark:bg-slate-900 px-2 py-1 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center gap-2">
-                                                                            <span className="text-[10px] text-slate-400">من</span>
-                                                                            <input
-                                                                                type="time"
-                                                                                value={shift.start}
-                                                                                onChange={(e) => updateShift(device.sn, idx, 'start', e.target.value)}
-                                                                                className="bg-transparent border-none text-xs font-bold text-slate-700 dark:text-white p-0 w-16 text-center focus:ring-0"
-                                                                            />
-                                                                        </div>
-                                                                        <span className="text-slate-300">→</span>
-                                                                        <div className="bg-slate-50 dark:bg-slate-900 px-2 py-1 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center gap-2">
-                                                                            <span className="text-[10px] text-slate-400">إلى</span>
-                                                                            <input
-                                                                                type="time"
-                                                                                value={shift.end}
-                                                                                onChange={(e) => updateShift(device.sn, idx, 'end', e.target.value)}
-                                                                                className="bg-transparent border-none text-xs font-bold text-slate-700 dark:text-white p-0 w-16 text-center focus:ring-0"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
+                                                    {config.shifts.map((shift, idx) => (
+                                                        <div key={idx} className="flex items-center gap-3 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                                            <div className={`w-1.5 self-stretch rounded-full ${idx === 0 ? 'bg-orange-400' : 'bg-indigo-400'}`}></div>
+                                                            <div className="flex-1">
+                                                                <div className="text-[10px] text-slate-400 font-bold mb-1">{idx === 0 ? 'الفترة الأولى' : 'الفترة الثانية'}</div>
+                                                                <div className="flex items-center justify-between text-sm font-bold text-slate-700 dark:text-white">
+                                                                    <span>{shift.start}</span>
+                                                                    <span className="text-slate-300 mx-2">←</span>
+                                                                    <span>{shift.end}</span>
                                                                 </div>
-                                                                <button
-                                                                    onClick={() => removeShift(device.sn, idx)}
-                                                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors absolute top-2 right-2 opacity-0 group-hover/shift:opacity-100"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
                                                             </div>
-                                                        ))
-                                                    )}
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div className="mt-6 flex justify-end pt-4 border-t border-slate-200/60 dark:border-slate-700/60">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleSave(device.sn); }}
-                                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
-                                            >
-                                                <CheckCircle2 size={16} />
-                                                حفظ التغييرات
-                                            </button>
                                         </div>
                                     </div>
                                 )}
