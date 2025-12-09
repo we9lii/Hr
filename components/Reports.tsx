@@ -217,135 +217,181 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   const handleExportSubmit = async () => {
     const { type, format, start, end } = exportConfig;
 
-    // Fetch data logic
+    // 1. Fetch Data
     const s = new Date(start);
     const e = new Date(end);
     e.setHours(23, 59, 59, 999);
 
-    let exportData: any[] = [];
     let dataForExport: AttendanceRecord[] = [];
-
     try {
       dataForExport = await fetchAttendanceLogsRange(s, e);
     } catch {
-      dataForExport = logs; // Fallback
+      dataForExport = logs;
     }
 
-    if (type === 'DETAILED') {
-      exportData = dataForExport.filter(log => {
-        const logDate = new Date(log.timestamp);
-        if (logDate < s || logDate > e) return false;
-        if (deviceSn && log.deviceSn !== deviceSn) return false;
-        return true;
-      }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    } else {
-      // Summary Logic
-      const byEmpDay = new Map<string, { firstCheckIn: Date; name: string; fullLog: AttendanceRecord }>();
-      dataForExport.forEach(log => {
-        const d = new Date(log.timestamp);
-        if (d < s || d > e) return;
-        if (deviceSn && log.deviceSn !== deviceSn) return;
-        if (log.type !== 'CHECK_IN') return;
-        const key = `${log.employeeId}__${d.toDateString()}`;
-        const prev = byEmpDay.get(key);
-        if (!prev || d.getTime() < prev.firstCheckIn.getTime()) {
-          byEmpDay.set(key, { firstCheckIn: d, name: log.employeeName, fullLog: log });
-        }
-      });
-      const byEmpTotal = new Map<string, { name: string; totalMinutes: number; daysLate: number }>();
-      byEmpDay.forEach((val, key) => {
-        const [empId] = key.split('__');
-        const lateMins = calculateDelay(val.fullLog);
+    // Filter by Device/Date
+    const filteredRaw = dataForExport.filter(log => {
+      const logDate = new Date(log.timestamp);
+      if (logDate < s || logDate > e) return false;
+      if (deviceSn && log.deviceSn !== deviceSn) return false;
+      return true;
+    });
 
-        const prev = byEmpTotal.get(empId);
-        if (!prev) {
-          byEmpTotal.set(empId, { name: val.name, totalMinutes: lateMins, daysLate: lateMins > 0 ? 1 : 0 });
-        } else {
-          prev.totalMinutes += lateMins;
-          prev.daysLate += lateMins > 0 ? 1 : 0;
-        }
-      });
-      exportData = Array.from(byEmpTotal.entries()).map(([id, v]) => ({ id, name: v.name, totalMinutes: v.totalMinutes, daysLate: v.daysLate }))
-        .sort((a, b) => b.totalMinutes - a.totalMinutes);
-    }
+    // 2. Process Data (Daily Summary Logic)
+    // Map key: "EmpID__DateString"
+    const dailyMap = new Map<string, {
+      empId: string;
+      empName: string;
+      date: string; // YYYY-MM-DD for sorting
+      displayDate: string;
+      firstIn: Date | null;
+      lastOut: Date | null;
+      totalDelayMins: number;
+      logs: AttendanceRecord[];
+    }>();
 
-    if (format === 'CSV') {
-      let headers: string[] = [];
-      let rows: string[][] = [];
+    filteredRaw.forEach(log => {
+      const d = new Date(log.timestamp);
+      const key = `${log.employeeId}__${d.toDateString()}`;
 
-      if (type === 'DETAILED') {
-        headers = ['المعرف', 'الموظف', 'الوقت', 'النوع', 'الحالة', 'الملاحظات'];
-        rows = exportData.map((log: AttendanceRecord) => {
-          const delay = calculateDelay(log);
-          return [
-            log.employeeId,
-            log.employeeName,
-            new Date(log.timestamp).toLocaleString('ar-SA'),
-            log.type === 'CHECK_IN' ? 'دخول' : 'خروج',
-            log.status,
-            delay > 0 ? `تأخير ${formatDuration(delay)}` : '-'
-          ];
-        });
-      } else {
-        headers = ['المعرف', 'الموظف', 'إجمالي دقائق التأخير', 'عدد أيام التأخير'];
-        rows = exportData.map((r: any) => [r.id, r.name, String(r.totalMinutes), String(r.daysLate)]);
+      let record = dailyMap.get(key);
+      if (!record) {
+        record = {
+          empId: log.employeeId,
+          empName: log.employeeName,
+          date: d.toISOString().split('T')[0],
+          displayDate: d.toLocaleDateString('ar-SA'),
+          firstIn: null,
+          lastOut: null,
+          totalDelayMins: 0,
+          logs: []
+        };
+        dailyMap.set(key, record);
       }
 
+      record.logs.push(log);
+
+      // Simple First In / Last Out Logic
+      if (log.type === 'CHECK_IN') {
+        if (!record.firstIn || d < record.firstIn) record.firstIn = d;
+        // Add delay if specifically marked LATE or calculates as such
+        record.totalDelayMins += calculateDelay(log);
+      } else if (log.type === 'CHECK_OUT') {
+        if (!record.lastOut || d > record.lastOut) record.lastOut = d;
+      }
+    });
+
+    // Convert map to list and sort
+    let reportRows = Array.from(dailyMap.values()).sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date); // Newest first
+      return a.empName.localeCompare(b.empName);
+    });
+
+    // 3. Generate Output
+    if (format === 'XLS') {
+      // Excel HTML Template
+      const style = `
+          <style>
+            body { direction: rtl; font-family: 'Tajawal', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 12pt; }
+            table { border-collapse: collapse; width: 100%; direction: rtl; margin-top: 20px; }
+            thead tr { background-color: #4f46e5; color: white; }
+            th { border: 1px solid #94a3b8; padding: 12px; text-align: center; font-weight: bold; background-color: #4f46e5; color: white; font-size: 12pt; }
+            td { border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-size: 12pt; color: #1e293b; }
+            .missing-out { background-color: #fca5a5; color: #7f1d1d; font-weight: bold; } /* Red background for missing checkout */
+            .header-info { margin-bottom: 20px; font-weight: bold; font-size: 14pt; }
+          </style>
+        `;
+
+      const headerRow = `<tr>
+          <th>المعرف</th>
+          <th>الموظف</th>
+          <th>التاريخ</th>
+          <th>وقت الحضور</th>
+          <th>وقت الانصراف</th>
+          <th>مدة التأخير</th>
+          <th>الحالة</th>
+      </tr>`;
+
+      const bodyRows = reportRows.map(row => {
+        const hasIn = !!row.firstIn;
+        const hasOut = !!row.lastOut;
+        const isMissingOut = hasIn && !hasOut;
+
+        // Format Time
+        const timeIn = row.firstIn ? row.firstIn.toLocaleTimeString('ar-SA') : '--';
+        const timeOut = row.lastOut ? row.lastOut.toLocaleTimeString('ar-SA') : '--';
+
+        // Format Delay
+        const delayStr = row.totalDelayMins > 0 ? formatDuration(row.totalDelayMins) : '-';
+
+        // Status Text
+        let status = 'حضور مكتمل';
+        if (isMissingOut) status = 'لم يسجل خروج';
+        else if (!hasIn && hasOut) status = 'خروج بدون دخول';
+
+        const rowClass = isMissingOut ? 'class="missing-out"' : '';
+
+        return `<tr ${rowClass}>
+            <td>${row.empId}</td>
+            <td>${row.empName}</td>
+            <td>${row.displayDate}</td>
+            <td>${timeIn}</td>
+            <td>${timeOut}</td>
+            <td>${delayStr}</td>
+            <td>${status}</td>
+        </tr>`;
+      }).join('');
+
+      const html = `
+        <!DOCTYPE html>
+        <html dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            ${style}
+        </head>
+        <body>
+            <div class="header-info">
+                تقرير الحضور والانصراف التفصيلي<br>
+                الفترة: من ${start} إلى ${end}
+            </div>
+            <table>
+                <thead>${headerRow}</thead>
+                <tbody>${bodyRows}</tbody>
+            </table>
+        </body>
+        </html>`;
+
+      const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', `Attendance_Report_${start}_${end}.xls`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } else {
+      // Simple CSV Fallback (if they select CSV)
+      const headers = ['المعرف', 'الموظف', 'التاريخ', 'وقت الحضور', 'وقت الانصراف', 'التأخير', 'الحالة'];
+      const rows = reportRows.map(r => {
+        return [
+          r.empId,
+          r.empName,
+          r.displayDate,
+          r.firstIn ? r.firstIn.toLocaleTimeString('ar-SA') : '--',
+          r.lastOut ? r.lastOut.toLocaleTimeString('ar-SA') : '--',
+          r.totalDelayMins > 0 ? formatDuration(r.totalDelayMins) : '0',
+          (r.firstIn && !r.lastOut) ? 'لم يسجل خروج' : 'مكتمل'
+        ];
+      });
       const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `Report_${type}_${start}.csv`);
+      link.setAttribute('download', `Attendance_Report_${start}.csv`);
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-    } else {
-      // Excel (HTML)
-      const style = `
-          <style>
-            body { direction: rtl; font-family: 'Tajawal', Arial, sans-serif; font-size: 8pt; }
-            table { border-collapse: collapse; width: 100%; direction: rtl; }
-            thead tr { background-color: #3b82f6; color: white; }
-            th { border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; background-color: #3b82f6; color: white; }
-            td { border: 1px solid #000; padding: 5px; text-align: center; font-size: 8pt; }
-          </style>
-        `;
-
-      let header = '';
-      let body = '';
-
-      if (type === 'DETAILED') {
-        header = `<tr><th>المعرف</th><th>الموظف</th><th>الوقت</th><th>النوع</th><th>الحالة</th><th>الملاحظات</th></tr>`;
-        body = exportData.map((log: AttendanceRecord) => {
-          const delay = calculateDelay(log);
-          return `<tr>
-                <td>${log.employeeId}</td>
-                <td>${log.employeeName}</td>
-                <td>${new Date(log.timestamp).toLocaleString('ar-SA')}</td>
-                <td>${log.type === 'CHECK_IN' ? 'دخول' : 'خروج'}</td>
-                <td>${log.status}</td>
-                <td>${delay > 0 ? `تأخير ${formatDuration(delay)}` : '-'}</td>
-            </tr>`;
-        }).join('');
-      } else {
-        header = `<tr><th>المعرف</th><th>الموظف</th><th>إجمالي دقائق التأخير</th><th>عدد أيام التأخير</th></tr>`;
-        body = exportData.map((r: any) => `<tr>
-                <td>${r.id}</td>
-                <td>${r.name}</td>
-                <td>${r.totalMinutes}</td>
-                <td>${r.daysLate}</td>
-            </tr>`).join('');
-      }
-
-      const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">${style}</head><body><table><thead>${header}</thead><tbody>${body}</tbody></table></body></html>`;
-      const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `Report_${type}_${start}.xls`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
     }
+
     setExportModalOpen(false);
   };
 

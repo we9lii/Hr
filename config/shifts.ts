@@ -92,7 +92,7 @@ export const DEVICE_RULES: DeviceRule[] = [
         shifts: [
             { start: '08:00', end: '17:30' }
         ],
-        aliasOverride: 'الإدارة العامة'
+        aliasOverride: 'الإدارة'
     },
     // 10. طبرجل (Tabarjal)
     {
