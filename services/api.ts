@@ -4,7 +4,7 @@ import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device } from
 const API_CONFIG = {
   baseUrl: '/iclock/api',
   username: 'admin',
-  password: 'Admin@123', 
+  password: 'Admin@123',
 };
 
 let AUTH_TOKEN: string | null = null;
@@ -28,12 +28,12 @@ const ensureAuthToken = async (): Promise<string> => {
 
 // Helper to generate JWT Headers
 const getHeaders = async () => {
-    const token = await ensureAuthToken();
-    return {
-        'Authorization': `JWT ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    };
+  const token = await ensureAuthToken();
+  return {
+    'Authorization': `JWT ${token}`,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  };
 };
 
 /**
@@ -41,34 +41,34 @@ const getHeaders = async () => {
  * Handles specific hardcoded super users and general API authentication
  */
 export const loginUser = async (username: string, role: 'ADMIN' | 'EMPLOYEE', password?: string): Promise<User> => {
-    // 1. Check for Super Admin (we9li)
-    if (role === 'ADMIN' && username === 'we9li' && password === '123') {
-        return {
-            id: 'SA-001',
-            name: 'Super Admin (we9li)',
-            role: 'ADMIN',
-            avatar: 'https://ui-avatars.com/api/?name=W+e&background=1e40af&color=fff&bold=true'
-        };
-    }
+  // 1. Check for Super Admin (we9li)
+  if (role === 'ADMIN' && username === 'we9li' && password === '123') {
+    return {
+      id: 'SA-001',
+      name: 'Super Admin (we9li)',
+      role: 'ADMIN',
+      avatar: 'https://ui-avatars.com/api/?name=W+e&background=1e40af&color=fff&bold=true'
+    };
+  }
 
-    // 2. Check for Super Employee (we9l)
-    if (role === 'EMPLOYEE' && username === 'we9l' && password === '123') {
-        return {
-            id: 'SE-001',
-            name: 'Super Employee (we9l)',
-            role: 'EMPLOYEE',
-            department: 'الإدارة العليا',
-            position: 'مشرف عام',
-            avatar: 'https://ui-avatars.com/api/?name=we9l&background=059669&color=fff&bold=true'
-        };
-    }
+  // 2. Check for Super Employee (we9l)
+  if (role === 'EMPLOYEE' && username === 'we9l' && password === '123') {
+    return {
+      id: 'SE-001',
+      name: 'Super Employee (we9l)',
+      role: 'EMPLOYEE',
+      department: 'الإدارة العليا',
+      position: 'مشرف عام',
+      avatar: 'https://ui-avatars.com/api/?name=we9l&background=059669&color=fff&bold=true'
+    };
+  }
 
-    // 3. Fallback for other users (Optional: strict mode currently rejects others)
-    // To enable general access, we would ping the server here.
-    // For now, based on your request to "Add account", we strictly validate these or throw error.
-    
-    // Simulate a check or throw error for invalid credentials
-    throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+  // 3. Fallback for other users (Optional: strict mode currently rejects others)
+  // To enable general access, we would ping the server here.
+  // For now, based on your request to "Add account", we strictly validate these or throw error.
+
+  // Simulate a check or throw error for invalid credentials
+  throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
 };
 
 /**
@@ -117,9 +117,9 @@ export const fetchAttendanceLogs = async (targetDate: Date = new Date()): Promis
             employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
             timestamp: punchTime.toISOString(),
             type: ((item.punch_state === '0' || item.punch_state === 'CHECK_IN') ? 'CHECK_IN' : 'CHECK_OUT') as 'CHECK_IN' | 'CHECK_OUT',
-            method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE : 
-                    item.verify_type_display === 'GPS' ? AttendanceMethod.GPS : 
-                    AttendanceMethod.FINGERPRINT,
+            method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
+              item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
+                AttendanceMethod.FINGERPRINT,
             status: isLate ? 'LATE' : 'ON_TIME',
             location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
               lat: parseFloat(item.latitude),
@@ -180,9 +180,9 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
           employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
           timestamp: punchTime.toISOString(),
           type: ((item.punch_state === '0' || item.punch_state === 'CHECK_IN') ? 'CHECK_IN' : 'CHECK_OUT') as 'CHECK_IN' | 'CHECK_OUT',
-          method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE : 
-                  item.verify_type_display === 'GPS' ? AttendanceMethod.GPS : 
-                  AttendanceMethod.FINGERPRINT,
+          method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
+            item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
+              AttendanceMethod.FINGERPRINT,
           status: isLate ? 'LATE' : 'ON_TIME',
           location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
             lat: parseFloat(item.latitude),
@@ -209,36 +209,36 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
  * Posts data to the API
  */
 export const submitGPSAttendance = async (
-  employeeId: string, 
-  lat: number, 
+  employeeId: string,
+  lat: number,
   lng: number,
   type: 'CHECK_IN' | 'CHECK_OUT'
 ): Promise<boolean> => {
   try {
-      const payload = {
-          emp_code: employeeId,
-          punch_time: new Date().toISOString(), // Or specific format 'YYYY-MM-DD HH:mm:ss'
-          latitude: lat,
-          longitude: lng,
-          punch_state: type === 'CHECK_IN' ? '0' : '1',
-          verify_mode: 'GPS' // Custom flag for your middleware
-      };
+    const payload = {
+      emp_code: employeeId,
+      punch_time: new Date().toISOString(), // Or specific format 'YYYY-MM-DD HH:mm:ss'
+      latitude: lat,
+      longitude: lng,
+      punch_state: type === 'CHECK_IN' ? '0' : '1',
+      verify_mode: 'GPS' // Custom flag for your middleware
+    };
 
-      const headers = await getHeaders();
-      const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload)
-      });
+    const headers = await getHeaders();
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
 
-      if (!response.ok) {
-          throw new Error("Failed to submit attendance");
-      }
-      
-      return true;
+    if (!response.ok) {
+      throw new Error("Failed to submit attendance");
+    }
+
+    return true;
   } catch (error) {
-      console.error("GPS Submit Error:", error);
-      throw error;
+    console.error("GPS Submit Error:", error);
+    throw error;
   }
 };
 
@@ -275,22 +275,59 @@ export const submitBiometricAttendance = async (
 };
 
 /**
+ * SUBMIT MANUAL ATTENDANCE
+ * Used by HR for adjustments
+ */
+export const submitManualAttendance = async (
+  employeeId: string,
+  timestamp: Date,
+  type: 'CHECK_IN' | 'CHECK_OUT'
+): Promise<boolean> => {
+  try {
+    const payload = {
+      emp_code: employeeId,
+      punch_time: timestamp.toISOString(),
+      punch_state: type === 'CHECK_IN' ? '0' : '1',
+      verify_mode: '15', // 15 often denotes Manual/Admin in ZK/API
+      area_alias: 'Manual Adjustment'
+    };
+
+    const headers = await getHeaders();
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const t = await response.text();
+      throw new Error(`Failed to submit manual attendance: ${t}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Manual Submit Error:", error);
+    throw error;
+  }
+};
+
+/**
  * STATISTICS CALCULATOR
  * Pure utility function, works on the data array passed to it
  */
 export const getStats = (records: AttendanceRecord[]): DashboardStats => {
   const todayStr = new Date().toDateString();
   const todayRecords = records.filter(r => new Date(r.timestamp).toDateString() === todayStr);
-  
+
   const uniquePresent = new Set(todayRecords.map(r => r.employeeId)).size;
   const late = todayRecords.filter(r => r.type === 'CHECK_IN' && r.status === 'LATE').length;
-  
+
   // Total employees should ideally come from an 'employees' endpoint. 
   // Calculating dynamic count based on unique IDs in logs + buffer or static base.
-  const totalEmployeesEst = Math.max(uniquePresent + 5, 20); 
+  const totalEmployeesEst = Math.max(uniquePresent + 5, 20);
 
   return {
-    totalEmployees: totalEmployeesEst, 
+    totalEmployees: totalEmployeesEst,
     presentToday: uniquePresent,
     lateToday: late,
     onLeave: totalEmployeesEst - uniquePresent

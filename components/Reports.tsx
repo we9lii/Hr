@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { AttendanceRecord, Device } from '../types';
-import { fetchDeviceEmployees, fetchAttendanceLogsRange } from '../services/api';
-import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X } from 'lucide-react';
+import { fetchDeviceEmployees, fetchAttendanceLogsRange, submitManualAttendance, fetchAllEmployees } from '../services/api';
+import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus } from 'lucide-react';
 import { getDeviceConfig } from '../config/shifts';
 
 interface ReportsProps {
@@ -15,6 +16,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   const [reportType, setReportType] = useState<ReportType>('LATE');
   const [deviceSn, setDeviceSn] = useState<string>('');
   const [deviceEmployees, setDeviceEmployees] = useState<{ empCode: string; empName: string }[]>([]);
+  const [allEmployees, setAllEmployees] = useState<{ code: string; name: string }[]>([]);
   const [startDate, setStartDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
@@ -26,6 +28,16 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   const [reportPage, setReportPage] = useState(1);
   const [summaryPage, setSummaryPage] = useState(1);
 
+  // Manual Entry State
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    empCode: '',
+    date: new Date().toISOString().split('T')[0],
+    time: '08:00',
+    type: 'CHECK_IN' as 'CHECK_IN' | 'CHECK_OUT'
+  });
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+
   // Export Modal State
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportConfig, setExportConfig] = useState({
@@ -34,6 +46,61 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     start: new Date().toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
   });
+
+  // Load All Employees for Manual Entry
+  useEffect(() => {
+    if (manualModalOpen && allEmployees.length === 0) {
+      fetchAllEmployees().then(setAllEmployees).catch(e => console.error("Failed to load employees", e));
+    }
+  }, [manualModalOpen]);
+
+  // Handle Manual Submit
+  const handleManualSubmit = async () => {
+    if (!manualForm.empCode) return alert("يرجى اختيار موظف");
+    setManualSubmitting(true);
+    try {
+      const [y, m, d] = manualForm.date.split('-').map(Number);
+      const [hh, mm] = manualForm.time.split(':').map(Number);
+      const timestamp = new Date(y, m - 1, d, hh, mm);
+
+      await submitManualAttendance(manualForm.empCode, timestamp, manualForm.type);
+
+      setManualModalOpen(false);
+      alert("تم تسجيل الحركة بنجاح");
+
+      // Refresh Data
+      setRangeLoading(true);
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      e.setHours(23, 59, 59, 999);
+      const data = await fetchAttendanceLogsRange(s, e);
+      setRangeLogs(data);
+      setRangeLoading(false);
+
+    } catch (error) {
+      alert("فشل في تسجيل الحركة: " + error);
+    } finally {
+      setManualSubmitting(false);
+    }
+  };
+
+  // ... rest of UseEffects ...
+
+  // ... calculateDelay ...
+
+  // ... filteredData ...
+
+  // UI render...
+  // (We need to inject the button and modal below)
+
+  // Re-inserting the previous render logic but skipping to the button area for brevity in replacement?
+  // No, I must be precise with StartLine/EndLine or Replace a block.
+  // I will replace the imports and state declarations first (lines 3-36).
+
+  // Wait, I can't split the file easily if I'm adding state.
+  // Best strategy: Replace lines 3-36 with imports + new state + handleManualSubmit.
+  // Then I will need strict context for the button insertion in a second call.
+
 
   // Update export config when filtered range changes
   useEffect(() => {
@@ -184,7 +251,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       if (d < start || d > end) return;
       if (deviceSn && log.deviceSn !== deviceSn) return;
       if (log.type !== 'CHECK_IN') return;
-      const key = `${log.employeeId}__${d.toDateString()}`;
+      const key = `${log.employeeId}__${d.toDateString()} `;
       const prev = byEmpDay.get(key);
       if (!prev || d.getTime() < prev.firstCheckIn.getTime()) {
         byEmpDay.set(key, { firstCheckIn: d, name: log.employeeName, fullLog: log });
@@ -261,7 +328,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
     filteredRaw.forEach(log => {
       const d = new Date(log.timestamp);
-      const key = `${log.employeeId}__${d.toDateString()}`;
+      const key = `${log.employeeId}__${d.toDateString()} `;
 
       let record = dailyMap.get(key);
       if (!record) {
@@ -287,43 +354,43 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
     // 3. Generate Output Helper
     const generateHTML = (header: string, body: string, title: string) => `
-        <!DOCTYPE html>
-        <html dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body { direction: rtl; font-family: 'Tajawal', 'Segoe UI', sans-serif; font-size: 12pt; }
-                table { border-collapse: collapse; width: 100%; direction: rtl; margin-top: 20px; }
-                thead tr { background-color: #4f46e5; color: white; }
-                th { border: 1px solid #94a3b8; padding: 12px; text-align: center; font-weight: bold; background-color: #4f46e5; color: white; }
-                td { border: 1px solid #cbd5e1; padding: 10px; text-align: center; color: #1e293b; }
-                .missing-out { background-color: #fca5a5 !important; color: #7f1d1d; font-weight: bold; }
-                .header-info { margin-bottom: 20px; font-weight: bold; font-size: 14pt; }
-            </style>
-        </head>
-        <body>
-            <div class="header-info">${title}<br>الفترة: من ${start} إلى ${end}</div>
-            <table><thead>${header}</thead><tbody>${body}</tbody></table>
-        </body>
-        </html>`;
+  < !DOCTYPE html >
+    <html dir="rtl">
+      <head>
+        <meta charset="UTF-8">
+          <style>
+            body {direction: rtl; font-family: 'Tajawal', 'Segoe UI', sans-serif; font-size: 12pt; }
+            table {border - collapse: collapse; width: 100%; direction: rtl; margin-top: 20px; }
+            thead tr {background - color: #4f46e5; color: white; }
+            th {border: 1px solid #94a3b8; padding: 12px; text-align: center; font-weight: bold; background-color: #4f46e5; color: white; }
+            td {border: 1px solid #cbd5e1; padding: 10px; text-align: center; color: #1e293b; }
+            .missing-out {background - color: #fca5a5 !important; color: #7f1d1d; font-weight: bold; }
+            .header-info {margin - bottom: 20px; font-weight: bold; font-size: 14pt; }
+          </style>
+      </head>
+      <body>
+        <div class="header-info">${title}<br>الفترة: من ${start} إلى ${end}</div>
+        <table><thead>${header}</thead><tbody>${body}</tbody></table>
+      </body>
+    </html>`;
 
     if (type === 'DETAILED') {
       // --- DAILY REPORT ---
       const rows = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date));
 
       if (format === 'XLS') {
-        const header = `<tr><th>المعرف</th><th>الموظف</th><th>التاريخ</th><th>وقت الحضور</th><th>وقت الانصراف</th><th>التأخير</th><th>الحالة</th></tr>`;
+        const header = `< tr ><th>المعرف</th><th>الموظف</th><th>التاريخ</th><th>وقت الحضور</th><th>وقت الانصراف</th><th>التأخير</th><th>الحالة</th></tr > `;
         const body = rows.map(r => {
           const isMissingOut = r.firstIn && !r.lastOut;
           const timeIn = r.firstIn ? r.firstIn.toLocaleTimeString('ar-SA') : '--';
           // Only highlight the CELL for timeOut
           const timeOutCell = isMissingOut
-            ? `<td class="missing-out">لم يسجل</td>`
-            : `<td>${r.lastOut ? r.lastOut.toLocaleTimeString('ar-SA') : '--'}</td>`;
+            ? `< td class="missing-out" > لم يسجل</td > `
+            : `< td > ${r.lastOut ? r.lastOut.toLocaleTimeString('ar-SA') : '--'}</td > `;
 
           const status = isMissingOut ? 'لم يسجل خروج' : (r.dailyDelay > 0 ? 'تأخير' : 'مكتمل');
 
-          return `<tr>
+          return `< tr >
                     <td>${r.empId}</td>
                     <td>${r.empName}</td>
                     <td>${r.displayDate}</td>
@@ -331,7 +398,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                     ${timeOutCell}
                     <td>${r.dailyDelay > 0 ? formatDuration(r.dailyDelay) : '-'}</td>
                     <td>${status}</td>
-                </tr>`;
+                </tr > `;
         }).join('');
 
         downloadFile(generateHTML(header, body, 'تقرير الحضور اليومي التفصيلي'), `Daily_Report_${start}.xls`, 'application/vnd.ms-excel');
@@ -368,14 +435,14 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       const rows = Array.from(empMap.entries()).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.totalDelay - a.totalDelay);
 
       if (format === 'XLS') {
-        const header = `<tr><th>المعرف</th><th>الموظف</th><th>إجمالي مدة التأخير</th><th>أيام التأخير</th><th>حالات عدم تسجيل خروج</th></tr>`;
-        const body = rows.map(r => `<tr>
+        const header = `< tr ><th>المعرف</th><th>الموظف</th><th>إجمالي مدة التأخير</th><th>أيام التأخير</th><th>حالات عدم تسجيل خروج</th></tr > `;
+        const body = rows.map(r => `< tr >
                 <td>${r.id}</td>
                 <td>${r.name}</td>
                 <td>${formatDuration(r.totalDelay)}</td>
                 <td>${r.daysLate}</td>
                 <td>${r.missingOutCount}</td>
-            </tr>`).join('');
+            </tr > `).join('');
         downloadFile(generateHTML(header, body, 'تقرير التأخير التجميعي'), `Summary_Report_${start}.xls`, 'application/vnd.ms-excel');
       } else {
         // CSV
@@ -389,7 +456,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   };
 
   const downloadFile = (content: string, fileName: string, mimeType: string) => {
-    const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
+    const blob = new Blob([content], { type: `${mimeType}; charset = utf - 8; ` });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.setAttribute('download', fileName);
@@ -419,6 +486,13 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setManualModalOpen(true)}
+              className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl hover:bg-purple-700 transition text-sm font-bold shadow-lg shadow-purple-500/20 active:scale-95"
+            >
+              <UserPlus size={18} />
+              تصحيح يدوي
+            </button>
+            <button
               onClick={() => setExportModalOpen(true)}
               className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition text-sm font-bold shadow-lg shadow-blue-500/20 active:scale-95"
             >
@@ -434,20 +508,20 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
             <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-900 p-1.5 rounded-xl border border-slate-200 dark:border-slate-800">
               <button
                 onClick={() => setReportType('ALL')}
-                className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${reportType === 'ALL' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                className={`px - 3 py - 2.5 text - xs font - bold rounded - lg transition - all flex items - center justify - center gap - 2 ${reportType === 'ALL' ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'} `}
               >
                 شامل
               </button>
               <button
                 onClick={() => setReportType('LATE')}
-                className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${reportType === 'LATE' ? 'bg-white dark:bg-slate-700 shadow-sm text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                className={`px - 3 py - 2.5 text - xs font - bold rounded - lg transition - all flex items - center justify - center gap - 2 ${reportType === 'LATE' ? 'bg-white dark:bg-slate-700 shadow-sm text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'} `}
               >
                 <AlertTriangle size={14} />
                 التأخير
               </button>
               <button
                 onClick={() => setReportType('METHODS')}
-                className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${reportType === 'METHODS' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                className={`px - 3 py - 2.5 text - xs font - bold rounded - lg transition - all flex items - center justify - center gap - 2 ${reportType === 'METHODS' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'} `}
               >
                 المصادر
               </button>
@@ -572,7 +646,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                         <span className="text-[10px] text-slate-400">{new Date(log.timestamp).toLocaleDateString('ar-SA-u-ca-gregory')}</span>
                       </td>
                       <td className="p-5">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${log.type === 'CHECK_IN' ? 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400'}`}>
+                        <span className={`px - 2.5 py - 1 rounded - full text - [10px] font - bold ${log.type === 'CHECK_IN' ? 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400'} `}>
                           {log.type === 'CHECK_IN' ? 'دخول' : 'خروج'}
                         </span>
                       </td>
@@ -582,7 +656,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                           <span className="font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded text-xs">+{formatDuration(calculateDelay(log))}</span>
                         ) : (
                           <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                            {log.location?.address ? log.location.address : log.location ? `${log.location.lat.toFixed(3)},${log.location.lng.toFixed(3)}` : 'موقع الجهاز'}
+                            {log.location?.address ? log.location.address : log.location ? `${log.location.lat.toFixed(3)},${log.location.lng.toFixed(3)} ` : 'موقع الجهاز'}
                           </span>
                         )}
                       </td>
@@ -593,9 +667,9 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                       <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                         <span>عرض 10 لكل صفحة</span>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setReportPage(p => Math.max(1, p - 1))} disabled={reportPage <= 1} className={`px-3 py-1 rounded-lg border ${reportPage <= 1 ? 'opacity-50 cursor-not-allowed' : ''} bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700`}>السابق</button>
+                          <button onClick={() => setReportPage(p => Math.max(1, p - 1))} disabled={reportPage <= 1} className={`px - 3 py - 1 rounded - lg border ${reportPage <= 1 ? 'opacity-50 cursor-not-allowed' : ''} bg - slate - 50 dark: bg - slate - 800 border - slate - 200 dark: border - slate - 700`}>السابق</button>
                           <span>صفحة {reportPage} من {reportTotalPages}</span>
-                          <button onClick={() => setReportPage(p => Math.min(reportTotalPages, p + 1))} disabled={reportPage >= reportTotalPages} className={`px-3 py-1 rounded-lg border ${reportPage >= reportTotalPages ? 'opacity-50 cursor-not-allowed' : ''} bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700`}>التالي</button>
+                          <button onClick={() => setReportPage(p => Math.min(reportTotalPages, p + 1))} disabled={reportPage >= reportTotalPages} className={`px - 3 py - 1 rounded - lg border ${reportPage >= reportTotalPages ? 'opacity-50 cursor-not-allowed' : ''} bg - slate - 50 dark: bg - slate - 800 border - slate - 200 dark: border - slate - 700`}>التالي</button>
                         </div>
                       </div>
                     </td>
@@ -637,9 +711,9 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                       <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                         <span>عرض 10 لكل صفحة</span>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setSummaryPage(p => Math.max(1, p - 1))} disabled={summaryPage <= 1} className={`px-3 py-1 rounded-lg border ${summaryPage <= 1 ? 'opacity-50 cursor-not-allowed' : ''} bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700`}>السابق</button>
+                          <button onClick={() => setSummaryPage(p => Math.max(1, p - 1))} disabled={summaryPage <= 1} className={`px - 3 py - 1 rounded - lg border ${summaryPage <= 1 ? 'opacity-50 cursor-not-allowed' : ''} bg - slate - 50 dark: bg - slate - 800 border - slate - 200 dark: border - slate - 700`}>السابق</button>
                           <span>صفحة {summaryPage} من {summaryTotalPages}</span>
-                          <button onClick={() => setSummaryPage(p => Math.min(summaryTotalPages, p + 1))} disabled={summaryPage >= summaryTotalPages} className={`px-3 py-1 rounded-lg border ${summaryPage >= summaryTotalPages ? 'opacity-50 cursor-not-allowed' : ''} bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700`}>التالي</button>
+                          <button onClick={() => setSummaryPage(p => Math.min(summaryTotalPages, p + 1))} disabled={summaryPage >= summaryTotalPages} className={`px - 3 py - 1 rounded - lg border ${summaryPage >= summaryTotalPages ? 'opacity-50 cursor-not-allowed' : ''} bg - slate - 50 dark: bg - slate - 800 border - slate - 200 dark: border - slate - 700`}>التالي</button>
                         </div>
                       </div>
                     </td>
@@ -672,13 +746,13 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                   <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
                     <button
                       onClick={() => setExportConfig(c => ({ ...c, type: 'DETAILED' }))}
-                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${exportConfig.type === 'DETAILED' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                      className={`flex - 1 py - 2 rounded - lg text - sm font - bold transition - all ${exportConfig.type === 'DETAILED' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'} `}
                     >
                       سجلات مفصلة
                     </button>
                     <button
                       onClick={() => setExportConfig(c => ({ ...c, type: 'SUMMARY' }))}
-                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${exportConfig.type === 'SUMMARY' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                      className={`flex - 1 py - 2 rounded - lg text - sm font - bold transition - all ${exportConfig.type === 'SUMMARY' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'} `}
                     >
                       ملخص التأخير
                     </button>
@@ -741,18 +815,104 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
           </div>
         )
       }
+
+      {/* Manual Entry Modal */}
+      {manualModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setManualModalOpen(false)} />
+          <div className="relative bg-white dark:bg-[#1e293b] rounded-2xl shadow-xl w-full max-w-md animate-fade-in border border-slate-200 dark:border-slate-700">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+              <h3 className="font-bold text-lg text-slate-800 dark:text-white">تسجيل حركة يدوية</h3>
+              <button onClick={() => setManualModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">الموظف</label>
+                <select
+                  value={manualForm.empCode}
+                  onChange={(e) => setManualForm(f => ({ ...f, empCode: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:text-white"
+                >
+                  <option value="">اختر الموظف...</option>
+                  {allEmployees.map(e => (
+                    <option key={e.code} value={e.code}>{e.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">التاريخ</label>
+                  <input
+                    type="date"
+                    value={manualForm.date}
+                    onChange={(e) => setManualForm(f => ({ ...f, date: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-purple-500 outline-none dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">الوقت</label>
+                  <input
+                    type="time"
+                    value={manualForm.time}
+                    onChange={(e) => setManualForm(f => ({ ...f, time: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-purple-500 outline-none dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">نوع الحركة</label>
+                <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+                  <button
+                    onClick={() => setManualForm(f => ({ ...f, type: 'CHECK_IN' }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${manualForm.type === 'CHECK_IN' ? 'bg-white dark:bg-slate-700 text-green-600 dark:text-green-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                  >
+                    تسجيل دخول
+                  </button>
+                  <button
+                    onClick={() => setManualForm(f => ({ ...f, type: 'CHECK_OUT' }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${manualForm.type === 'CHECK_OUT' ? 'bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                  >
+                    تسجيل خروج
+                  </button>
+                </div>
+              </div>
+
+            </div>
+            <div className="p-5 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
+              <button
+                onClick={() => setManualModalOpen(false)}
+                className="px-4 py-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 text-sm font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleManualSubmit}
+                disabled={manualSubmitting}
+                className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold shadow-lg shadow-purple-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {manualSubmitting ? 'جارِ الحفظ...' : 'حفظ الحركة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };
 
 const StatCard = ({ title, value, color, icon, bg, border }: any) => (
-  <div className={`${bg} p-4 rounded-2xl border ${border} flex items-center gap-4 transition-all hover:shadow-md group`}>
-    <div className={`p-3 rounded-xl bg-white dark:bg-slate-800 shadow-sm ${color} group-hover:scale-110 transition-transform`}>
+  <div className={`${bg} p - 4 rounded - 2xl border ${border} flex items - center gap - 4 transition - all hover: shadow - md group`}>
+    <div className={`p - 3 rounded - xl bg - white dark: bg - slate - 800 shadow - sm ${color} group - hover: scale - 110 transition - transform`}>
       {React.cloneElement(icon, { size: 24 })}
     </div>
     <div>
       <p className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-0.5">{title}</p>
-      <h3 className={`text-xl font-extrabold ${color}`}>{value}</h3>
+      <h3 className={`text - xl font - extrabold ${color} `}>{value}</h3>
     </div>
   </div>
 );
