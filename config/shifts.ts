@@ -6,9 +6,9 @@ export interface ShiftConfig {
 }
 
 export interface DeviceRule {
-    matcher: (device: Device) => boolean; // Function to match a device (by SN or Alias)
+    matcher: (device: Device | { sn: string, alias?: string }) => boolean;
     shifts: ShiftConfig[];
-    aliasOverride?: string; // Optional: Force a specific alias name
+    aliasOverride?: string;
 }
 
 // ----------------------------------------------------------------------
@@ -16,26 +16,93 @@ export interface DeviceRule {
 // ----------------------------------------------------------------------
 
 export const DEVICE_RULES: DeviceRule[] = [
+    // 1. الصرار (Al-Sarrar)
     {
-        // 1. القسم النسائي (Ladies Section)
-        // Match by Name (contains 'نسائي' or 'ladies') OR specific SN if you know it
+        matcher: (d) => (d.alias || '').includes('الصرار'),
+        shifts: [
+            { start: '08:00', end: '11:30' },
+            { start: '15:30', end: '20:30' }
+        ],
+        aliasOverride: 'فرع الصرار'
+    },
+    // 2. مستودع الحديد القصيم (Qassim Iron Warehouse)
+    {
+        matcher: (d) => (d.alias || '').includes('حديد') && (d.alias || '').includes('القصيم'),
+        shifts: [
+            { start: '08:00', end: '17:30' }
+        ],
+        aliasOverride: 'مستودع الحديد القصيم'
+    },
+    // 3. المستودع القصيم (Qassim Warehouse - General)
+    {
+        matcher: (d) => (d.alias || '').includes('المستودع') && (d.alias || '').includes('القصيم') && !(d.alias || '').includes('حديد'),
+        shifts: [
+            { start: '08:00', end: '17:30' }
+        ],
+        aliasOverride: 'مستودع القصيم'
+    },
+    // 4. المحلات القصيم (Qassim Shops)
+    {
+        matcher: (d) => (d.alias || '').includes('المحلات') || ((d.alias || '').includes('محلات') && (d.alias || '').includes('القصيم')),
+        shifts: [
+            { start: '08:00', end: '12:00' },
+            { start: '15:15', end: '20:15' }
+        ],
+        aliasOverride: 'محلات القصيم'
+    },
+    // 5. الدمام (Dammam)
+    {
+        matcher: (d) => (d.alias || '').includes('الدمام'),
+        shifts: [
+            { start: '08:00', end: '11:30' },
+            { start: '15:30', end: '20:30' }
+        ],
+        aliasOverride: 'فرع الدمام'
+    },
+    // 6. القسم النسائي (Ladies Section)
+    {
         matcher: (d) => (d.alias || '').includes('نسائي') || (d.alias || '').toLowerCase().includes('ladies'),
         shifts: [
-            { start: '08:00', end: '14:55' }, // الفترة الأولى: 8:00 ص - 2:55 م
-            { start: '15:10', end: '23:00' }  // الفترة الثانية: 3:10 م - 11:00 م
+            { start: '08:00', end: '15:10' },
+            { start: '14:50', end: '22:00' }
         ],
         aliasOverride: 'القسم النسائي'
     },
+    // 7. الرياض المعرض (Riyadh Showroom)
     {
-        // 2. مثال: الفرع الرئيسي (Main Branch)
-        // قاعدة افتراضية لأي جهاز آخر لا يطابق القواعد أعلاه
-        // يمكنك تكرار هذا النمط لأجهزة أخرى بواسطة SN
-        matcher: (d) => d.sn === 'YOUR_PF_DEVICE_SN',
+        matcher: (d) => (d.alias || '').includes('الرياض') || (d.alias || '').includes('المعرض'),
         shifts: [
-            { start: '09:00', end: '17:00' }
-        ]
+            { start: '08:00', end: '12:00' },
+            { start: '15:30', end: '20:30' }
+        ],
+        aliasOverride: 'معرض الرياض'
     },
-    // ... يمكنك إضافة المزيد من القواعد هنا
+    // 8. وادي الدواسر (Wadi Ad-Dawasir)
+    {
+        matcher: (d) => (d.alias || '').includes('الدواسر'),
+        shifts: [
+            { start: '08:00', end: '12:00' },
+            { start: '15:30', end: '20:30' }
+        ],
+        aliasOverride: 'فرع وادي الدواسر'
+    },
+    // 9. الإدارة (Administration)
+    {
+        matcher: (d) => (d.alias || '').includes('الإدارة') || (d.alias || '').includes('الادارة') || (d.alias || '').includes('Admin'),
+        shifts: [
+            { start: '08:00', end: '17:30' }
+        ],
+        aliasOverride: 'الإدارة العامة'
+    },
+    // 10. طبرجل (Tabarjal)
+    {
+        matcher: (d) => (d.alias || '').includes('طبرجل'),
+        shifts: [
+            { start: '08:00', end: '13:00' },
+            { start: '16:30', end: '20:30' }
+        ],
+        aliasOverride: 'فرع طبرجل'
+    }
 ];
 
 export const DEFAULT_SHIFTS: ShiftConfig[] = [
@@ -46,7 +113,7 @@ export const DEFAULT_SHIFTS: ShiftConfig[] = [
 // Helper function to resolve config for a device
 export const getDeviceConfig = (device: { sn: string; alias?: string; }) => {
     // 1. Try to find a matching rule
-    const rule = DEVICE_RULES.find(r => r.matcher(device as Device));
+    const rule = DEVICE_RULES.find(r => r.matcher(device));
 
     // 2. Return config or defaults
     return {

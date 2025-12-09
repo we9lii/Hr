@@ -47,13 +47,12 @@ const App: React.FC = () => {
     { id: '1', name: 'المقر الرئيسي', lat: 24.7136, lng: 46.6753, radius: 200, active: true }
   ]);
 
-  // Initialization: Theme, Auto-Login
+  // Initialization: Enforce Dark Mode & Auto Login
   useEffect(() => {
-    // 1. Load Theme
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      setIsDarkMode(true);
-    }
+    // 1. Force Dark Mode
+    setIsDarkMode(true);
+    document.documentElement.classList.add('dark');
+    localStorage.setItem('theme', 'dark'); // Persist just in case other tabs/logic read it
 
     // 2. Auto Login
     const savedUser = localStorage.getItem('currentUser');
@@ -66,11 +65,8 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const toggleTheme = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    localStorage.setItem('theme', newMode ? 'dark' : 'light');
-  };
+  // Removed toggleTheme - System is Force Dark
+  const toggleTheme = () => { }; // No-op to keep prop stability if needed strictly, or verify usage.
 
   const loadData = async () => {
     setLoading(true);

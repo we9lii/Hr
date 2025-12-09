@@ -83,23 +83,20 @@ body {
 }
 
 /* Liquid Glass Theme */
+/* Liquid Glass Theme (Enforced Dark Mode) */
 .liquid-bg {
-  background: radial-gradient(circle at 10% 20%, rgb(18, 24, 43) 0%, rgb(32, 42, 68) 90.2%);
+  /* Deep Navy Gradient (Default) */
+  background: radial-gradient(circle at 10% 20%, rgb(15, 23, 42) 0%, rgb(30, 41, 59) 90.2%);
   min-height: 100vh;
   color: #fff;
 }
 
 .liquid-glass {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-}
-
-.dark .liquid-glass {
-  background: rgba(15, 23, 42, 0.4);
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
 }
 
 /* Selection color for theme */
