@@ -237,17 +237,16 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       return true;
     });
 
-    // 2. Process Data (Daily Summary Logic)
+    // 2. Process Data into Daily Records (Base for both reports)
     // Map key: "EmpID__DateString"
     const dailyMap = new Map<string, {
       empId: string;
       empName: string;
-      date: string; // YYYY-MM-DD for sorting
+      date: string;
       displayDate: string;
       firstIn: Date | null;
       lastOut: Date | null;
-      totalDelayMins: number;
-      logs: AttendanceRecord[];
+      dailyDelay: number;
     }>();
 
     filteredRaw.forEach(log => {
@@ -263,136 +262,135 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
           displayDate: d.toLocaleDateString('ar-SA'),
           firstIn: null,
           lastOut: null,
-          totalDelayMins: 0,
-          logs: []
+          dailyDelay: 0
         };
         dailyMap.set(key, record);
-      }
+      } // No 'logs' array needed for export, saving memory
 
-      record.logs.push(log);
-
-      // Simple First In / Last Out Logic
       if (log.type === 'CHECK_IN') {
         if (!record.firstIn || d < record.firstIn) record.firstIn = d;
-        // Add delay if specifically marked LATE or calculates as such
-        record.totalDelayMins += calculateDelay(log);
+        record.dailyDelay += calculateDelay(log);
       } else if (log.type === 'CHECK_OUT') {
         if (!record.lastOut || d > record.lastOut) record.lastOut = d;
       }
     });
 
-    // Convert map to list and sort
-    let reportRows = Array.from(dailyMap.values()).sort((a, b) => {
-      if (a.date !== b.date) return b.date.localeCompare(a.date); // Newest first
-      return a.empName.localeCompare(b.empName);
-    });
-
-    // 3. Generate Output
-    if (format === 'XLS') {
-      // Excel HTML Template
-      const style = `
-          <style>
-            body { direction: rtl; font-family: 'Tajawal', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 12pt; }
-            table { border-collapse: collapse; width: 100%; direction: rtl; margin-top: 20px; }
-            thead tr { background-color: #4f46e5; color: white; }
-            th { border: 1px solid #94a3b8; padding: 12px; text-align: center; font-weight: bold; background-color: #4f46e5; color: white; font-size: 12pt; }
-            td { border: 1px solid #cbd5e1; padding: 10px; text-align: center; font-size: 12pt; color: #1e293b; }
-            .missing-out { background-color: #fca5a5; color: #7f1d1d; font-weight: bold; } /* Red background for missing checkout */
-            .header-info { margin-bottom: 20px; font-weight: bold; font-size: 14pt; }
-          </style>
-        `;
-
-      const headerRow = `<tr>
-          <th>المعرف</th>
-          <th>الموظف</th>
-          <th>التاريخ</th>
-          <th>وقت الحضور</th>
-          <th>وقت الانصراف</th>
-          <th>مدة التأخير</th>
-          <th>الحالة</th>
-      </tr>`;
-
-      const bodyRows = reportRows.map(row => {
-        const hasIn = !!row.firstIn;
-        const hasOut = !!row.lastOut;
-        const isMissingOut = hasIn && !hasOut;
-
-        // Format Time
-        const timeIn = row.firstIn ? row.firstIn.toLocaleTimeString('ar-SA') : '--';
-        const timeOut = row.lastOut ? row.lastOut.toLocaleTimeString('ar-SA') : '--';
-
-        // Format Delay
-        const delayStr = row.totalDelayMins > 0 ? formatDuration(row.totalDelayMins) : '-';
-
-        // Status Text
-        let status = 'حضور مكتمل';
-        if (isMissingOut) status = 'لم يسجل خروج';
-        else if (!hasIn && hasOut) status = 'خروج بدون دخول';
-
-        const rowClass = isMissingOut ? 'class="missing-out"' : '';
-
-        return `<tr ${rowClass}>
-            <td>${row.empId}</td>
-            <td>${row.empName}</td>
-            <td>${row.displayDate}</td>
-            <td>${timeIn}</td>
-            <td>${timeOut}</td>
-            <td>${delayStr}</td>
-            <td>${status}</td>
-        </tr>`;
-      }).join('');
-
-      const html = `
+    // 3. Generate Output Helper
+    const generateHTML = (header: string, body: string, title: string) => `
         <!DOCTYPE html>
         <html dir="rtl">
         <head>
             <meta charset="UTF-8">
-            ${style}
+            <style>
+                body { direction: rtl; font-family: 'Tajawal', 'Segoe UI', sans-serif; font-size: 12pt; }
+                table { border-collapse: collapse; width: 100%; direction: rtl; margin-top: 20px; }
+                thead tr { background-color: #4f46e5; color: white; }
+                th { border: 1px solid #94a3b8; padding: 12px; text-align: center; font-weight: bold; background-color: #4f46e5; color: white; }
+                td { border: 1px solid #cbd5e1; padding: 10px; text-align: center; color: #1e293b; }
+                .missing-out { background-color: #fca5a5 !important; color: #7f1d1d; font-weight: bold; }
+                .header-info { margin-bottom: 20px; font-weight: bold; font-size: 14pt; }
+            </style>
         </head>
         <body>
-            <div class="header-info">
-                تقرير الحضور والانصراف التفصيلي<br>
-                الفترة: من ${start} إلى ${end}
-            </div>
-            <table>
-                <thead>${headerRow}</thead>
-                <tbody>${bodyRows}</tbody>
-            </table>
+            <div class="header-info">${title}<br>الفترة: من ${start} إلى ${end}</div>
+            <table><thead>${header}</thead><tbody>${body}</tbody></table>
         </body>
         </html>`;
 
-      const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `Attendance_Report_${start}_${end}.xls`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    if (type === 'DETAILED') {
+      // --- DAILY REPORT ---
+      const rows = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+
+      if (format === 'XLS') {
+        const header = `<tr><th>المعرف</th><th>الموظف</th><th>التاريخ</th><th>وقت الحضور</th><th>وقت الانصراف</th><th>التأخير</th><th>الحالة</th></tr>`;
+        const body = rows.map(r => {
+          const isMissingOut = r.firstIn && !r.lastOut;
+          const timeIn = r.firstIn ? r.firstIn.toLocaleTimeString('ar-SA') : '--';
+          // Only highlight the CELL for timeOut
+          const timeOutCell = isMissingOut
+            ? `<td class="missing-out">لم يسجل</td>`
+            : `<td>${r.lastOut ? r.lastOut.toLocaleTimeString('ar-SA') : '--'}</td>`;
+
+          const status = isMissingOut ? 'لم يسجل خروج' : (r.dailyDelay > 0 ? 'تأخير' : 'مكتمل');
+
+          return `<tr>
+                    <td>${r.empId}</td>
+                    <td>${r.empName}</td>
+                    <td>${r.displayDate}</td>
+                    <td>${timeIn}</td>
+                    ${timeOutCell}
+                    <td>${r.dailyDelay > 0 ? formatDuration(r.dailyDelay) : '-'}</td>
+                    <td>${status}</td>
+                </tr>`;
+        }).join('');
+
+        downloadFile(generateHTML(header, body, 'تقرير الحضور اليومي التفصيلي'), `Daily_Report_${start}.xls`, 'application/vnd.ms-excel');
+      } else {
+        // CSV
+        const h = ['المعرف', 'الموظف', 'التاريخ', 'وقت الحضور', 'وقت الانصراف', 'التأخير', 'الحالة'];
+        const r = rows.map(row => [
+          row.empId,
+          row.empName,
+          row.displayDate,
+          row.firstIn ? row.firstIn.toLocaleTimeString('ar-SA') : '--',
+          row.lastOut ? row.lastOut.toLocaleTimeString('ar-SA') : 'لم يسجل',
+          row.dailyDelay > 0 ? formatDuration(row.dailyDelay) : '0',
+          (row.firstIn && !row.lastOut) ? 'لم يسجل خروج' : 'مكتمل'
+        ]);
+        downloadCSV(h, r, `Daily_Report_${start}.csv`);
+      }
 
     } else {
-      // Simple CSV Fallback (if they select CSV)
-      const headers = ['المعرف', 'الموظف', 'التاريخ', 'وقت الحضور', 'وقت الانصراف', 'التأخير', 'الحالة'];
-      const rows = reportRows.map(r => {
-        return [
-          r.empId,
-          r.empName,
-          r.displayDate,
-          r.firstIn ? r.firstIn.toLocaleTimeString('ar-SA') : '--',
-          r.lastOut ? r.lastOut.toLocaleTimeString('ar-SA') : '--',
-          r.totalDelayMins > 0 ? formatDuration(r.totalDelayMins) : '0',
-          (r.firstIn && !r.lastOut) ? 'لم يسجل خروج' : 'مكتمل'
-        ];
+      // --- TOTAL SUMMARY REPORT (Aggregated by Employee) ---
+      const empMap = new Map<string, { name: string, totalDelay: number, daysLate: number, missingOutCount: number }>();
+
+      dailyMap.forEach(day => {
+        let e = empMap.get(day.empId);
+        if (!e) {
+          e = { name: day.empName, totalDelay: 0, daysLate: 0, missingOutCount: 0 };
+          empMap.set(day.empId, e);
+        }
+        e.totalDelay += day.dailyDelay;
+        if (day.dailyDelay > 0) e.daysLate++;
+        if (day.firstIn && !day.lastOut) e.missingOutCount++;
       });
-      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `Attendance_Report_${start}.csv`);
-      document.body.appendChild(link);
-      link.click();
+
+      const rows = Array.from(empMap.entries()).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.totalDelay - a.totalDelay);
+
+      if (format === 'XLS') {
+        const header = `<tr><th>المعرف</th><th>الموظف</th><th>إجمالي مدة التأخير</th><th>أيام التأخير</th><th>حالات عدم تسجيل خروج</th></tr>`;
+        const body = rows.map(r => `<tr>
+                <td>${r.id}</td>
+                <td>${r.name}</td>
+                <td>${formatDuration(r.totalDelay)}</td>
+                <td>${r.daysLate}</td>
+                <td>${r.missingOutCount}</td>
+            </tr>`).join('');
+        downloadFile(generateHTML(header, body, 'تقرير التأخير التجميعي'), `Summary_Report_${start}.xls`, 'application/vnd.ms-excel');
+      } else {
+        // CSV
+        const h = ['المعرف', 'الموظف', 'إجمالي مدة التأخير', 'أيام التأخير', 'حالات عدم تسجيل خروج'];
+        const r = rows.map(r => [r.id, r.name, formatDuration(r.totalDelay), String(r.daysLate), String(r.missingOutCount)]);
+        downloadCSV(h, r, `Summary_Report_${start}.csv`);
+      }
     }
 
     setExportModalOpen(false);
+  };
+
+  const downloadFile = (content: string, fileName: string, mimeType: string) => {
+    const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadCSV = (headers: string[], rows: string[][], fileName: string) => {
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    downloadFile(csvContent, fileName, 'text/csv');
   };
 
   return (
