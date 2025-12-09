@@ -42,7 +42,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
   // Helper to calculate delay based on device shifts or default
   const calculateDelay = (log: AttendanceRecord) => {
-    if (log.type !== 'CHECK_IN' || log.status !== 'LATE') return 0;
+    if (log.type !== 'CHECK_IN') return 0;
 
     // Resolve config from Code (Static Rules)
     const deviceConfig = getDeviceConfig({
@@ -52,35 +52,42 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
     const shifts = deviceConfig.shifts;
     if (!shifts || shifts.length === 0) {
-      // Default fallback if no shifts in config (unlikely given DEFAULT_SHIFTS)
+      // Default fallback (8:00 AM strict)
       const defaultStart = new Date(log.timestamp);
       defaultStart.setHours(8, 0, 0, 0);
-      const diff = new Date(log.timestamp).getTime() - defaultStart.getTime();
-      return Math.max(0, Math.floor(diff / 60000));
+      return Math.max(0, Math.floor((new Date(log.timestamp).getTime() - defaultStart.getTime()) / 60000));
     }
 
     const checkInTime = new Date(log.timestamp);
+    const checkInHour = checkInTime.getHours();
 
-    // Find closest shift start time
-    let minDiff = Infinity;
-    let lateMinutes = 0;
+    // Determine applicable shift based on time of day (AM/PM split)
+    // Assumption: If multiple shifts, they are ordered chronologically.
+    // We split roughly at 13:00 (1 PM) to separate Morning/Evening shifts.
+    let targetShift = shifts[0];
 
-    shifts.forEach(shift => {
-      const [h, m] = shift.start.split(':').map(Number);
-      const shiftStart = new Date(log.timestamp);
-      shiftStart.setHours(h, m, 0, 0);
-
-      const diff = Math.abs(checkInTime.getTime() - shiftStart.getTime());
-
-      // If this shift is closer than previous best match
-      if (diff < minDiff) {
-        minDiff = diff;
-        const actualLate = checkInTime.getTime() - shiftStart.getTime();
-        lateMinutes = Math.max(0, Math.floor(actualLate / 60000));
+    if (shifts.length > 1) {
+      // Simple heuristic: If check-in is after 13:00, associate with 2nd shift (if exists)
+      // This handles the "8-12" and "3:30-8:30" periods naturally.
+      if (checkInHour >= 13) {
+        targetShift = shifts[1];
+      } else {
+        targetShift = shifts[0];
       }
-    });
+    }
 
-    return lateMinutes;
+    // Calculate Delay against Target Shift
+    const [h, m] = targetShift.start.split(':').map(Number);
+    const shiftStart = new Date(log.timestamp);
+    shiftStart.setHours(h, m, 0, 0);
+
+    const diffMs = checkInTime.getTime() - shiftStart.getTime();
+
+    // Strict Match: Any time > start is late.
+    // 08:00:00 -> 0 diff -> 0 late.
+    // 08:00:59 -> 59000 diff -> 0 late.
+    // 08:01:00 -> 60000 diff -> 1 late.
+    return Math.max(0, Math.floor(diffMs / 60000));
   };
 
   const filteredData = useMemo(() => {
