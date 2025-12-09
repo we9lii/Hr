@@ -225,7 +225,7 @@ export const submitGPSAttendance = async (
     };
 
     const headers = await getHeaders();
-    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
@@ -259,7 +259,7 @@ export const submitBiometricAttendance = async (
       payload.terminal_sn = terminalSn;
     }
     const headers = await getHeaders();
-    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
@@ -293,7 +293,7 @@ export const submitManualAttendance = async (
     };
 
     const headers = await getHeaders();
-    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/add/`, {
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
