@@ -217,10 +217,13 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   const handleExportSubmit = async () => {
     const { type, format, start, end } = exportConfig;
 
-    // 1. Fetch Data
-    const s = new Date(start);
-    const e = new Date(end);
-    e.setHours(23, 59, 59, 999);
+    // 1. Fetch Data (Ensure Local Full Day Range)
+    // start/end are "YYYY-MM-DD"
+    const [sy, sm, sd] = start.split('-').map(Number);
+    const [ey, em, ed] = end.split('-').map(Number);
+
+    const s = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+    const e = new Date(ey, em - 1, ed, 23, 59, 59, 999);
 
     let dataForExport: AttendanceRecord[] = [];
     try {
