@@ -232,9 +232,34 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                             <td className="p-3 text-slate-300 text-xs">{log.deviceAlias || log.deviceSn || '-'}</td>
                                             <td className="p-3 text-slate-300 font-mono text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
                                             <td className="p-3">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold text-white/90`}>
-                                                    {log.type === 'CHECK_IN' ? 'دخول' : 'خروج'}
-                                                </span>
+                                                {(() => {
+                                                    let label = 'غير معروف';
+                                                    let color = 'bg-slate-500/20 text-slate-300';
+
+                                                    switch (log.type) {
+                                                        case 'CHECK_IN':
+                                                            label = 'حضور';
+                                                            color = 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                                                            break;
+                                                        case 'CHECK_OUT':
+                                                            label = 'انصراف';
+                                                            color = 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
+                                                            break;
+                                                        case 'BREAK_IN':
+                                                            label = 'عودة من استراحة';
+                                                            color = 'bg-blue-500/20 text-blue-300 border border-blue-500/30';
+                                                            break;
+                                                        case 'BREAK_OUT':
+                                                            label = 'خروج للاستراحة';
+                                                            color = 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
+                                                            break;
+                                                    }
+                                                    return (
+                                                        <span className={`px-3 py-1 rounded-lg text-xs font-bold ${color}`}>
+                                                            {label}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </td>
                                         </tr>
                                     ))}

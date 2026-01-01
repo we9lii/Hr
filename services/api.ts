@@ -1,4 +1,46 @@
 import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device } from '../types';
+import { getDeviceConfig } from '../config/shifts';
+
+// Helper to determine if a record is late based on configuration
+const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): boolean => {
+  if (!deviceSn && !deviceAlias) return false; // Cannot determine without device context
+
+  const config = getDeviceConfig({ sn: deviceSn || '', alias: deviceAlias });
+  const shifts = config.shifts;
+
+  if (!shifts || shifts.length === 0) return false;
+
+  const punchHour = punchTime.getHours();
+  const punchMin = punchTime.getMinutes();
+
+  // Find relevant shift (Morning vs Evening split at 13:00)
+  let shift = shifts[0];
+  if (shifts.length > 1 && punchHour >= 13) {
+    shift = shifts[1];
+  }
+
+  const [startHour, startMin] = shift.start.split(':').map(Number);
+
+  // Calculate strict lateness (Buffer can be added here if needed, e.g. +15 mins)
+  // Current logic: Late if punchTime > shiftStart + 15 minutes (matching old hardcoded logic but dynamic)
+  // Converting everything to minutes for comparison
+  const punchTotal = punchHour * 60 + punchMin;
+  const startTotal = startHour * 60 + startMin;
+
+  return punchTotal > (startTotal + 15);
+};
+
+// Parse ZK Punch State
+const parsePunchState = (state: string | number): 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_IN' | 'BREAK_OUT' => {
+  const s = String(state);
+  if (s === '0' || s === 'CHECK_IN') return 'CHECK_IN';
+  if (s === '1' || s === 'CHECK_OUT') return 'CHECK_OUT';
+  if (s === '2') return 'BREAK_OUT';
+  if (s === '3') return 'BREAK_IN';
+  if (s === '4') return 'CHECK_IN';
+  if (s === '5') return 'CHECK_OUT';
+  return 'CHECK_OUT'; // Default fallback matching old logic
+};
 
 // Real API Configuration
 const API_CONFIG = {
@@ -110,13 +152,13 @@ export const fetchAttendanceLogs = async (targetDate: Date = new Date()): Promis
           oldestDateStrOnPage = pageStr;
         }
         if (pageStr === targetStr) {
-          const isLate = punchTime.getHours() > 8 || (punchTime.getHours() === 8 && punchTime.getMinutes() > 15);
+          const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
           out.push({
             id: item.id ? String(item.id) : `log-${i}-${index}`,
             employeeId: item.emp_code || item.user_id || 'UNKNOWN',
             employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
             timestamp: punchTime.toISOString(),
-            type: ((item.punch_state === '0' || item.punch_state === 'CHECK_IN') ? 'CHECK_IN' : 'CHECK_OUT') as 'CHECK_IN' | 'CHECK_OUT',
+            type: parsePunchState(item.punch_state),
             method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
               item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
                 AttendanceMethod.FINGERPRINT,
@@ -173,13 +215,13 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
       const pageStr = punchTime.toDateString();
       oldestDateStrOnPage = pageStr;
       if (punchTime >= startDate && punchTime <= endDate) {
-        const isLate = punchTime.getHours() > 8 || (punchTime.getHours() === 8 && punchTime.getMinutes() > 15);
+        const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
         out.push({
           id: item.id ? String(item.id) : `log-${i}-${index}`,
           employeeId: item.emp_code || item.user_id || 'UNKNOWN',
           employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
           timestamp: punchTime.toISOString(),
-          type: ((item.punch_state === '0' || item.punch_state === 'CHECK_IN') ? 'CHECK_IN' : 'CHECK_OUT') as 'CHECK_IN' | 'CHECK_OUT',
+          type: parsePunchState(item.punch_state),
           method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
             item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
               AttendanceMethod.FINGERPRINT,
@@ -197,6 +239,88 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
     const next: string | undefined = raw?.next;
     const shouldStop = !!oldestDateStrOnPage && oldestDateStrOnPage !== endStr && oldestDateStrOnPage !== startStr && new Date(oldestDateStrOnPage) < startDate;
     if (shouldStop || !next) {
+      break;
+    }
+    url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
+  }
+  return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+};
+
+export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, endDate: Date): Promise<AttendanceRecord[]> => {
+  const headers = await getHeaders();
+  // Try to use server-side filtering if available, otherwise we filter client-side
+  let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time&emp_code=${employeeId}`;
+
+  const out: AttendanceRecord[] = [];
+  const startStr = startDate.toISOString().split('T')[0];
+  const endStr = endDate.toISOString().split('T')[0];
+
+  // We loop to fetch pages until we go past the start date
+  for (let i = 0; i < 50; i++) {
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) {
+      // If filter by emp_code fails (400/500), fallback might be needed, but sticking to this for now
+      const t = await response.text();
+      console.warn(`Fetch Employee Logs Warning: ${response.status} - ${t}`);
+      // If server doesn't support emp_code param, we might get empty or error.
+      // Retrying without emp_code would be too heavy (fetching ALL logs for a month). 
+      // Assuming it works or returns subset.
+      if (i === 0) throw new Error(`Server Error: ${response.status}`);
+      break;
+    }
+    const raw = await response.json();
+    const list: any[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.results)
+          ? raw.results
+          : [];
+
+    if (list.length === 0) break;
+
+    let oldestDateStrOnPage: string | null = null;
+    let foundOlder = false;
+
+    for (const item of list) {
+      // Double check emp_code matches (if server ignored param)
+      const code = String(item.emp_code || item.user_id || 'UNKNOWN');
+      if (code !== employeeId) continue;
+
+      const punchTime = new Date(item.punch_time || item.time || item.timestamp);
+      // Simple range check
+      if (punchTime >= startDate && punchTime <= endDate) {
+        const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
+        out.push({
+          id: item.id ? String(item.id) : `log-${i}-${item.id}`,
+          employeeId: code,
+          employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
+          timestamp: punchTime.toISOString(),
+          type: parsePunchState(item.punch_state),
+          method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
+            item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
+              AttendanceMethod.FINGERPRINT,
+          status: isLate ? 'LATE' : 'ON_TIME',
+          location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
+            lat: parseFloat(item.latitude),
+            lng: parseFloat(item.longitude),
+            address: item.area_alias || 'موقع مسجل'
+          } : undefined),
+          deviceSn: item.terminal_sn || undefined,
+          deviceAlias: item.terminal_alias || item.area_alias || undefined
+        } as AttendanceRecord);
+      }
+
+      const pageStr = punchTime.toISOString().split('T')[0];
+      oldestDateStrOnPage = pageStr;
+      if (punchTime < startDate) {
+        foundOlder = true;
+      }
+    }
+
+    const next: string | undefined = raw?.next;
+    // Stop if we found logs older than startDate OR no next page
+    if (foundOlder || !next) {
       break;
     }
     url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
