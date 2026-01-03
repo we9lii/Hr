@@ -131,6 +131,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLog
         {/* Top fade for scroll */}
         <div className="fixed top-0 left-0 right-0 h-4 bg-gradient-to-b from-[#f8fafc] dark:from-[#0b1121] to-transparent z-10 pointer-events-none md:hidden" />
         {children}
+        <footer className="mt-8 text-center text-[10px] text-slate-400 font-mono opacity-50 pb-4">
+          © 2026 QSSUN Energy. Developed by Faisal.
+        </footer>
       </main>
 
       {/* Overlay for mobile */}

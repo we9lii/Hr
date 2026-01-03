@@ -6,79 +6,79 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'الإدارة',
         lat: 26.3668327,
         lng: 43.9089633,
-        radius: 100, // 100 meters default
+        radius: 50, // 100 meters default
         active: true
     },
     {
         id: 'QASSIM_SHOPS',
         name: 'محلات القصيم',
-        lat: 0,
-        lng: 0,
-        radius: 100,
+        lat: 26.352222,
+        lng: 43.949944,
+        radius: 50,
         active: true
     },
     {
         id: 'RIYADH',
         name: 'معرض الرياض',
-        lat: 0,
-        lng: 0,
-        radius: 100,
+        lat: 24.6425281,
+        lng: 46.7240967,
+        radius: 50,
         active: true
     },
     {
         id: 'QASSIM_WH',
-        name: 'مستودع القصيم',
-        lat: 0,
-        lng: 0,
-        radius: 200, // Warehouses might need larger radius
+        name: 'مستودع القصيم', // Mapped to Iron2 (Al Quraishi WH)
+        lat: 26.2426731,
+        lng: 44.0251749,
+        radius: 50,
         active: true
     },
     {
         id: 'TABARJAL',
         name: 'فرع طبرجل',
-        lat: 0,
-        lng: 0,
-        radius: 100,
+        lat: 30.1468929,
+        lng: 38.3993353,
+        radius: 50,
         active: true
     },
     {
         id: 'WADI_DAWASIR',
         name: 'فرع وادي الدواسر',
-        lat: 0,
-        lng: 0,
-        radius: 100,
+        lat: 20.4551073,
+        lng: 44.8291926,
+        radius: 50,
         active: true
     },
     {
         id: 'SARRAR',
         name: 'فرع الصرار',
-        lat: 0,
-        lng: 0,
-        radius: 100,
+        lat: 26.9747897,
+        lng: 48.3935929,
+        radius: 50,
         active: true
     },
     {
         id: 'QASSIM_IRON',
-        name: 'مستودع الحديد القصيم',
-        lat: 0,
-        lng: 0,
-        radius: 200,
+        name: 'مستودع الحديد القصيم', // Mapped to Iron1
+        lat: 26.388297,
+        lng: 44.027435,
+        radius: 50,
         active: true
     },
     {
         id: 'DAMMAM',
         name: 'فرع الدمام',
-        lat: 0,
-        lng: 0,
-        radius: 100,
+        lat: 26.3968125,
+        lng: 50.0398125,
+        radius: 50,
         active: true
     },
     {
         id: 'LADIES',
         name: 'القسم النسائي',
-        lat: 0,
-        lng: 0,
-        radius: 100,
+        lat: 26.3748889,
+        lng: 43.895,
+        radius: 50,
         active: true
     }
 ];

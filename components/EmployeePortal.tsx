@@ -389,6 +389,10 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
           </div>
         </div>
       </div>
+      {/* Footer */}
+      <footer className="w-full text-center py-4 text-[10px] text-slate-400 dark:text-slate-600 font-mono opacity-50 relative z-10">
+        © 2026 QSSUN Energy. Developed by Faisal.
+      </footer>
     </div>
   );
 };

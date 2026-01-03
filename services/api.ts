@@ -1,11 +1,44 @@
 import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device } from '../types';
 import { getDeviceConfig } from '../config/shifts';
+import { LOCATIONS } from '../config/locations';
 
-// Helper to determine if a record is late based on configuration
-const resolveAreaName = (lat: number, lng: number): string => {
-  if (lat > 25.0) return 'القصيم';
-  if (lng > 49.0) return 'الدمام';
-  return 'الرياض';
+// Haversine Formula (Copied for API Usage)
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371e3; // Earth radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// Validates coordinate and resolves from Config
+const resolveAreaName = (lat: number, lng: number): string | null => {
+  if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return null;
+
+  // Clean Coordinates
+  for (const loc of LOCATIONS) {
+    if (loc.lat === 0 && loc.lng === 0) continue; // Skip empty config
+    const dist = calculateDistance(lat, lng, loc.lat, loc.lng);
+    if (dist <= loc.radius) return loc.name;
+  }
+  return null;
+};
+
+// Parse ZK Punch State
+const parsePunchState = (state: string | number): 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_IN' | 'BREAK_OUT' => {
+  const s = String(state);
+  if (s === '0' || s === 'CHECK_IN') return 'CHECK_IN';
+  if (s === '1' || s === 'CHECK_OUT') return 'CHECK_OUT';
+  if (s === '2') return 'BREAK_OUT';
+  if (s === '3') return 'BREAK_IN';
+  if (s === '4') return 'CHECK_IN';
+  if (s === '5') return 'CHECK_OUT';
+  return 'CHECK_OUT'; // Default fallback matching old logic
 };
 
 const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): boolean => {
@@ -36,16 +69,65 @@ const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): 
   return punchTotal > (startTotal + 15);
 };
 
-// Parse ZK Punch State
-const parsePunchState = (state: string | number): 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_IN' | 'BREAK_OUT' => {
-  const s = String(state);
-  if (s === '0' || s === 'CHECK_IN') return 'CHECK_IN';
-  if (s === '1' || s === 'CHECK_OUT') return 'CHECK_OUT';
-  if (s === '2') return 'BREAK_OUT';
-  if (s === '3') return 'BREAK_IN';
-  if (s === '4') return 'CHECK_IN';
-  if (s === '5') return 'CHECK_OUT';
-  return 'CHECK_OUT'; // Default fallback matching old logic
+// --- SHARED ENRICHMENT LOGIC ---
+const enrichLogsWithWebPunches = async (logs: AttendanceRecord[], minDate: Date) => {
+  try {
+    // Fetch latest 500 Web Punches to ensure coverage
+    const headers = await getHeaders();
+    const wpUrl = `/att/api/webpunches/?page_size=500&ordering=-id`;
+    const wpRes = await fetch(wpUrl, { headers });
+
+    if (!wpRes.ok) return logs;
+
+    const wpRaw = await wpRes.json();
+    const wpList = wpRaw.data || wpRaw.results || [];
+
+    // Debug Log
+    console.log(`[Enrichment] Loaded ${wpList.length} WebPunches to match against ${logs.length} Logs`);
+
+    for (const log of logs) {
+      if (log.deviceSn === 'Web' || !log.location || log.location.address === 'Location') {
+        const logTime = new Date(log.timestamp).getTime();
+
+        // Fuzzy Match: Same Emp Code + Time within +/- 2 mins
+        const match = wpList.find((wp: any) => {
+          if (String(wp.emp_code) !== String(log.employeeId)) return false;
+          const wpTime = new Date(wp.punch_time).getTime();
+          const diff = Math.abs(logTime - wpTime);
+          // Increase window to 4 hours (14,400,000 ms) to handle TZ diffs (UTC vs KSA)
+          return diff < 14400000;
+        });
+
+        if (match) {
+          // 1. Trust Manual/Server Area Alias first
+          let area = match.area_alias;
+
+          // 2. If no area, try to resolve from GPS using Config
+          if (!area && (match.latitude || match.gps_location)) {
+            const lat = match.latitude ? parseFloat(match.latitude) : NaN;
+            const lng = match.longitude ? parseFloat(match.longitude) : NaN;
+            const resolved = resolveAreaName(lat, lng);
+            if (resolved) area = resolved;
+          }
+
+          if (area) {
+            console.log(`[Enrichment] Matched ${log.employeeId} @ ${log.timestamp} -> ${area}`);
+            const displayName = `تطبيق الجوال - ${area}`;
+            log.deviceAlias = area; // Keep clean area name for logic
+            log.location = {
+              lat: match.latitude ? parseFloat(match.latitude) : 0,
+              lng: match.longitude ? parseFloat(match.longitude) : 0,
+              address: displayName // Show "Mobile App - Location"
+            };
+            // Do NOT overwrite deviceSn. Let it be 'Web'.
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Enrichment Error", e);
+  }
+  return logs;
 };
 
 // Real API Configuration
@@ -181,16 +263,25 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
         : Array.isArray(raw?.results)
           ? raw.results
           : [];
+
+    if (list.length === 0 && i === 0) {
+      // Allow empty list, just break
+      break;
+    }
+
     let oldestDateStrOnPage: string | null = null;
-    for (let index = 0; index < list.length; index++) {
-      const item = list[index];
+    let foundOlder = false;
+
+    // Standard Loop
+    for (const item of list) {
       const punchTime = new Date(item.punch_time || item.time || item.timestamp);
       const pageStr = punchTime.toDateString();
       oldestDateStrOnPage = pageStr;
+
       if (punchTime >= startDate && punchTime <= endDate) {
         const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
         out.push({
-          id: item.id ? String(item.id) : `log-${i}-${index}`,
+          id: item.id ? String(item.id) : `log-${i}-${item.id}`,
           employeeId: item.emp_code || item.user_id || 'UNKNOWN',
           employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
           timestamp: punchTime.toISOString(),
@@ -215,11 +306,9 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
           })(),
           deviceSn: item.terminal_sn || undefined,
           deviceAlias: (() => {
-            // Prefer terminal_alias, then area_alias, then resolved name from coords if 'Web'
             if (item.terminal_alias) return item.terminal_alias;
             if (item.area_alias) return item.area_alias;
             if (item.terminal_sn === 'Web' || !item.terminal_sn) {
-              // Try to resolve from gps
               if (item.gps_location && typeof item.gps_location === 'string') {
                 const [lat, lng] = item.gps_location.split(',').map(Number);
                 return resolveAreaName(lat, lng);
@@ -229,67 +318,26 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
           })()
         } as AttendanceRecord);
       }
+
+      if (punchTime < startDate) {
+        foundOlder = true;
+      }
     }
+
     const next: string | undefined = raw?.next;
-    const shouldStop = !!oldestDateStrOnPage && oldestDateStrOnPage !== endStr && oldestDateStrOnPage !== startStr && new Date(oldestDateStrOnPage) < startDate;
-    if (shouldStop || !next) {
+    const shouldStop = !!oldestDateStrOnPage && new Date(oldestDateStrOnPage) < startDate;
+
+    if (foundOlder || shouldStop || !next) {
       break;
     }
     url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
   }
 
-  // --- Enrichment Step: Fetch Web Punches to fill missing GPS data in Transactions ---
-  try {
-    // Remove date filter to avoid ISO format issues. Just get latest 200.
-    const wpUrl = `/att/api/webpunches/?page_size=200&ordering=-id`;
-    const wpRes = await fetch(wpUrl, { headers });
-    if (wpRes.ok) {
-      const wpRaw = await wpRes.json();
-      const wpList = wpRaw.results || [];
-      const wpMap = new Map();
-
-      wpList.forEach((wp: any) => {
-        // Create fuzzy keys for matching (Transaction time usually matches WebPunch time)
-        const t = new Date(wp.punch_time).getTime();
-        wpMap.set(`${wp.emp_code}_${t}`, wp);
-        // Also add +/- 1 second coverage just in case of second-rounding differences
-        wpMap.set(`${wp.emp_code}_${t + 1000}`, wp);
-        wpMap.set(`${wp.emp_code}_${t - 1000}`, wp);
-      });
-
-      // Enrich logs
-      for (const log of out) {
-        if (log.deviceSn === 'Web' || !log.location) {
-          const logTime = new Date(log.timestamp).getTime();
-          const match = wpMap.get(`${log.employeeId}_${logTime}`);
-          if (match) {
-            const gps = match.gps_location || `${match.latitude},${match.longitude}`;
-            let area = match.area_alias;
-            if ((!area || area === 'Mobile_GPS') && gps && gps.includes(',')) {
-              const [lat, lng] = gps.split(',').map(Number);
-              area = resolveAreaName(lat, lng);
-            }
-
-            if (area) {
-              log.deviceAlias = area;
-              log.location = {
-                lat: match.latitude || 0,
-                lng: match.longitude || 0,
-                address: area
-              };
-            }
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("WebPunch enrichment failed", e);
-  }
-  // --------------------------------------------------------------------------------
+  // Apply Shared Enrichment
+  await enrichLogsWithWebPunches(out, startDate);
 
   return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
-
 export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, endDate: Date): Promise<AttendanceRecord[]> => {
   const headers = await getHeaders();
   // Try to use server-side filtering if available, otherwise we filter client-side
@@ -388,6 +436,10 @@ export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, end
     }
     url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
   }
+
+  // Apply Enrichment for Employee Logs too
+  await enrichLogsWithWebPunches(out, startDate);
+
   return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
 
@@ -405,7 +457,8 @@ export const submitGPSAttendance = async (
   employeeId: string,
   lat: number,
   lng: number,
-  type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN'
+  type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN',
+  manualArea?: string
 ): Promise<{ success: boolean; area?: string }> => {
   try {
     let punchState = '0';
@@ -441,15 +494,19 @@ export const submitGPSAttendance = async (
     const punchTime = localIso.replace('T', ' ').split('.')[0];
 
     // 3. Dynamic Area & Device Mapping (for display)
-    let areaName = 'Riyadh'; // Default
+    let areaName = manualArea || 'الرياض'; // Prefer manual area if provided
     let deviceSn = 'RKQ4235200204'; // Default to Riyadh Device
 
-    if (lat > 25.0) {
-      areaName = 'Qassim';
-      deviceSn = 'RKQ4235200199';
-    } else if (lng > 49.0) {
-      areaName = 'Dammam';
-      // deviceSn = ...
+    if (!manualArea) {
+      if (lat > 25.0) {
+        areaName = 'القصيم';
+        deviceSn = 'RKQ4235200199';
+      } else if (lng > 49.0) {
+        areaName = 'الدمام';
+      }
+    } else {
+      // Map Manual Names to Device SNs if needed
+      if (manualArea === 'القصيم') deviceSn = 'RKQ4235200199';
     }
 
     // 4. Construct Payload (Using WebPunch Endpoint but Spoofing Device)
