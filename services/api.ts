@@ -169,10 +169,10 @@ const getHeaders = async () => {
 /**
  * LOGIN USER
  * Handles specific hardcoded super users and general API authentication
- */
-export const loginUser = async (username: string, role: 'ADMIN' | 'EMPLOYEE', password?: string): Promise<User> => {
+ */// LOGIN USER
+export const loginUser = async (username: string, password?: string): Promise<User> => {
   // 1. Check for Super Admin (we9li)
-  if (role === 'ADMIN' && username === 'we9li' && password === '123') {
+  if (username === 'we9li' && password === '123') {
     return {
       id: 'SA-001',
       name: 'Super Admin (we9li)',
@@ -181,54 +181,59 @@ export const loginUser = async (username: string, role: 'ADMIN' | 'EMPLOYEE', pa
     };
   }
 
-  // 2. Real Employee Login
-  if (role === 'EMPLOYEE') {
-    // Default Password Rule: 4 digits + 2 letters (e.g., '1234ab') - Hardcoded for now as requested
-    const DEFAULT_PASSWORD = '1234ab';
-
-    if (password !== DEFAULT_PASSWORD) {
-      throw new Error("كلمة المرور غير صحيحة");
-    }
-
-    // Verify Employee Exists by fetching their latest log
-    // We use the ID (username) to fetch 1 record.
-    try {
-      const headers = await getHeaders();
-      const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${username}&page_size=1`, {
-        method: 'GET',
-        headers
-      });
-
-      if (!response.ok) {
-        throw new Error("فشل الاتصال بالخادم للتحقق من بيانات الموظف");
-      }
-
-      const raw = await response.json();
-      const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
-
-      if (list.length === 0) {
-        throw new Error("رقم الموظف غير موجود في النظام أو ليس لديه سجلات سابقة");
-      }
-
-      const record = list[0];
-      const realName = record.emp_name || record.first_name || 'موظف';
-
-      return {
-        id: username,
-        name: realName,
-        role: 'EMPLOYEE',
-        department: 'الموظفين', // Placeholder
-        position: 'Team Member',
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(realName)}&background=random`
-      };
-
-    } catch (error: any) {
-      console.error("Login verification failed", error);
-      throw new Error(error.message || "حدث خطأ أثناء التحقق من بيانات الموظف");
-    }
+  // 1.5 Check for Admin (Abdullah)
+  if (username === 'Abdullah' && password === 'Qssun26') {
+    return {
+      id: 'AD-002',
+      name: 'HR Manager (Abdullah)',
+      role: 'ADMIN',
+      avatar: 'https://ui-avatars.com/api/?name=A+b&background=10b981&color=fff&bold=true'
+    };
   }
 
-  throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+  // 2. Real Employee Login (Default Fallback)
+  // Default Password Rule: 4 digits + 2 letters (e.g., '1234ab')
+  const DEFAULT_PASSWORD = '1234ab';
+
+  if (password !== DEFAULT_PASSWORD) {
+    throw new Error("كلمة المرور غير صحيحة");
+  }
+
+  // Verify Employee Exists
+  try {
+    const headers = await getHeaders();
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${username}&page_size=1`, {
+      method: 'GET',
+      headers
+    });
+
+    if (!response.ok) {
+      throw new Error("فشل الاتصال بالخادم للتحقق من بيانات الموظف");
+    }
+
+    const raw = await response.json();
+    const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+
+    if (list.length === 0) {
+      throw new Error("رقم الموظف غير موجود في النظام أو ليس لديه سجلات سابقة");
+    }
+
+    const record = list[0];
+    const realName = record.emp_name || record.first_name || 'موظف';
+
+    return {
+      id: username,
+      name: realName,
+      role: 'EMPLOYEE',
+      department: 'الموظفين', // Placeholder
+      position: 'Team Member',
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(realName)}&background=random`
+    };
+
+  } catch (error: any) {
+    console.error("Login verification failed", error);
+    throw new Error(error.message || "حدث خطأ أثناء التحقق من بيانات الموظف");
+  }
 };
 
 /**

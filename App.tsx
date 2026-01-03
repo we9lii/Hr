@@ -150,10 +150,10 @@ const App: React.FC = () => {
     }
   }, [currentUser, autoRefresh, refreshIntervalMs]);
 
-  const handleLogin = async (username: string, password: string, role: UserRole, rememberMe: boolean) => {
+  const handleLogin = async (username: string, password: string, rememberMe: boolean) => {
     setLoginError(null);
     try {
-      const user = await loginUser(username, role, password);
+      const user = await loginUser(username, password);
       setCurrentUser(user);
       if (rememberMe) {
         localStorage.setItem('currentUser', JSON.stringify(user));
