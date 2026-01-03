@@ -5,7 +5,7 @@ import { fetchAttendanceLogs, loginUser, fetchDevices, fetchEmployeeCount, fetch
 // GPSAttendance page disabled temporarily
 import EmployeePortal from './components/EmployeePortal';
 import LoginScreen from './components/LoginScreen';
-// LocationManager page disabled temporarily
+import LocationManager from './components/LocationManager';
 import Reports from './components/Reports';
 import { AttendanceRecord, DashboardStats, User, UserRole, LocationConfig, Device } from './types';
 import { getStats } from './services/api';
@@ -590,6 +590,8 @@ const App: React.FC = () => {
             {activeTab === 'settings' && (
               <DeviceManager onDevicesUpdated={setDevices} />
             )}
+
+            {activeTab === 'locations' && <LocationManager />}
 
             {selectedEmployeeId && (
               <EmployeeProfileModal

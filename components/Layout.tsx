@@ -17,6 +17,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLog
     { id: 'dashboard', label: 'لوحة المعلومات', icon: <LayoutDashboard size={20} /> },
     { id: 'logs', label: 'سجلات الحضور', icon: <ClipboardList size={20} /> },
     { id: 'reports', label: 'التقارير الذكية', icon: <BarChart3 size={20} /> },
+    { id: 'locations', label: 'إدارة المواقع', icon: <MapPin size={20} /> },
     { id: 'settings', label: 'الإعدادات', icon: <Settings size={20} /> },
   ];
 

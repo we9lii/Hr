@@ -229,7 +229,11 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                     {pageLogs.map((log, i) => (
                                         <tr key={log.id || i} className="hover:bg-white/5 border-b border-white/10 transition-colors">
                                             <td className="p-3 font-bold text-white">{log.employeeName}</td>
-                                            <td className="p-3 text-slate-300 text-xs">{log.deviceAlias || log.deviceSn || '-'}</td>
+                                            <td className="p-3 text-slate-300 text-xs">
+                                                {(log.deviceSn === 'Web' && log.location?.address)
+                                                    ? log.location.address
+                                                    : (log.deviceAlias || log.deviceSn || '-')}
+                                            </td>
                                             <td className="p-3 text-slate-300 font-mono text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
                                             <td className="p-3">
                                                 {(() => {

@@ -2,6 +2,12 @@ import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device } from
 import { getDeviceConfig } from '../config/shifts';
 
 // Helper to determine if a record is late based on configuration
+const resolveAreaName = (lat: number, lng: number): string => {
+  if (lat > 25.0) return 'القصيم';
+  if (lng > 49.0) return 'الدمام';
+  return 'الرياض';
+};
+
 const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): boolean => {
   if (!deviceSn && !deviceAlias) return false; // Cannot determine without device context
 
@@ -93,23 +99,53 @@ export const loginUser = async (username: string, role: 'ADMIN' | 'EMPLOYEE', pa
     };
   }
 
-  // 2. Check for Super Employee (we9l)
-  if (role === 'EMPLOYEE' && username === 'we9l' && password === '123') {
-    return {
-      id: 'SE-001',
-      name: 'Super Employee (we9l)',
-      role: 'EMPLOYEE',
-      department: 'الإدارة العليا',
-      position: 'مشرف عام',
-      avatar: 'https://ui-avatars.com/api/?name=we9l&background=059669&color=fff&bold=true'
-    };
+  // 2. Real Employee Login
+  if (role === 'EMPLOYEE') {
+    // Default Password Rule: 4 digits + 2 letters (e.g., '1234ab') - Hardcoded for now as requested
+    const DEFAULT_PASSWORD = '1234ab';
+
+    if (password !== DEFAULT_PASSWORD) {
+      throw new Error("كلمة المرور غير صحيحة");
+    }
+
+    // Verify Employee Exists by fetching their latest log
+    // We use the ID (username) to fetch 1 record.
+    try {
+      const headers = await getHeaders();
+      const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${username}&page_size=1`, {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error("فشل الاتصال بالخادم للتحقق من بيانات الموظف");
+      }
+
+      const raw = await response.json();
+      const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+
+      if (list.length === 0) {
+        throw new Error("رقم الموظف غير موجود في النظام أو ليس لديه سجلات سابقة");
+      }
+
+      const record = list[0];
+      const realName = record.emp_name || record.first_name || 'موظف';
+
+      return {
+        id: username,
+        name: realName,
+        role: 'EMPLOYEE',
+        department: 'الموظفين', // Placeholder
+        position: 'Team Member',
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(realName)}&background=random`
+      };
+
+    } catch (error: any) {
+      console.error("Login verification failed", error);
+      throw new Error(error.message || "حدث خطأ أثناء التحقق من بيانات الموظف");
+    }
   }
 
-  // 3. Fallback for other users (Optional: strict mode currently rejects others)
-  // To enable general access, we would ping the server here.
-  // For now, based on your request to "Add account", we strictly validate these or throw error.
-
-  // Simulate a check or throw error for invalid credentials
   throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
 };
 
@@ -118,74 +154,11 @@ export const loginUser = async (username: string, role: 'ADMIN' | 'EMPLOYEE', pa
  * Connects to http://qssun.dyndns.org:8085/personnel/api/transactions/
  */
 export const fetchAttendanceLogs = async (targetDate: Date = new Date()): Promise<AttendanceRecord[]> => {
-  try {
-    const headers = await getHeaders();
-    let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time`;
-    const out: AttendanceRecord[] = [];
-    const targetStr = targetDate.toDateString();
-    for (let i = 0; i < 50; i++) {
-      const response = await fetch(url, { method: 'GET', headers });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Server Error: ${response.status} - ${errorText}`);
-      }
-      const raw = await response.json();
-      const list: any[] = Array.isArray(raw)
-        ? raw
-        : Array.isArray(raw?.data)
-          ? raw.data
-          : Array.isArray(raw?.results)
-            ? raw.results
-            : [];
-
-      if (list.length === 0 && i === 0) {
-        throw new Error('لا توجد سجلات حديثة من الخادم');
-      }
-
-      let oldestDateStrOnPage: string | null = null;
-      list.forEach((item: any, index: number) => {
-        const punchTime = new Date(item.punch_time || item.time || item.timestamp);
-        const pageStr = punchTime.toDateString();
-        if (!oldestDateStrOnPage) oldestDateStrOnPage = pageStr;
-        else {
-          // keep oldest (given ordering=-punch_time, iteration preserves order)
-          oldestDateStrOnPage = pageStr;
-        }
-        if (pageStr === targetStr) {
-          const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
-          out.push({
-            id: item.id ? String(item.id) : `log-${i}-${index}`,
-            employeeId: item.emp_code || item.user_id || 'UNKNOWN',
-            employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
-            timestamp: punchTime.toISOString(),
-            type: parsePunchState(item.punch_state),
-            method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
-              item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
-                AttendanceMethod.FINGERPRINT,
-            status: isLate ? 'LATE' : 'ON_TIME',
-            location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
-              lat: parseFloat(item.latitude),
-              lng: parseFloat(item.longitude),
-              address: item.area_alias || 'موقع مسجل'
-            } : undefined),
-            deviceSn: item.terminal_sn || undefined,
-            deviceAlias: item.terminal_alias || item.area_alias || undefined
-          } as AttendanceRecord);
-        }
-      });
-
-      const next: string | undefined = raw?.next;
-      const shouldStop = !!oldestDateStrOnPage && oldestDateStrOnPage !== targetStr;
-      if (shouldStop || !next) {
-        break;
-      }
-      url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
-    }
-    return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  } catch (error) {
-    console.error('Fetch Logs Error:', error);
-    throw error;
-  }
+  const start = new Date(targetDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(targetDate);
+  end.setHours(23, 59, 59, 999);
+  return fetchAttendanceLogsRange(start, end);
 };
 
 export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): Promise<AttendanceRecord[]> => {
@@ -226,13 +199,34 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
             item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
               AttendanceMethod.FINGERPRINT,
           status: isLate ? 'LATE' : 'ON_TIME',
-          location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
-            lat: parseFloat(item.latitude),
-            lng: parseFloat(item.longitude),
-            address: item.area_alias || 'موقع مسجل'
-          } : undefined),
+          location: (() => {
+            if (item.gps_location && typeof item.gps_location === 'string') {
+              const [latStr, lngStr] = item.gps_location.split(',');
+              const lat = parseFloat(latStr);
+              const lng = parseFloat(lngStr);
+              return { lat, lng, address: resolveAreaName(lat, lng) };
+            }
+            if (item.latitude && item.longitude) {
+              const lat = parseFloat(item.latitude);
+              const lng = parseFloat(item.longitude);
+              return { lat, lng, address: resolveAreaName(lat, lng) };
+            }
+            return undefined;
+          })(),
           deviceSn: item.terminal_sn || undefined,
-          deviceAlias: item.terminal_alias || item.area_alias || undefined
+          deviceAlias: (() => {
+            // Prefer terminal_alias, then area_alias, then resolved name from coords if 'Web'
+            if (item.terminal_alias) return item.terminal_alias;
+            if (item.area_alias) return item.area_alias;
+            if (item.terminal_sn === 'Web' || !item.terminal_sn) {
+              // Try to resolve from gps
+              if (item.gps_location && typeof item.gps_location === 'string') {
+                const [lat, lng] = item.gps_location.split(',').map(Number);
+                return resolveAreaName(lat, lng);
+              }
+            }
+            return undefined;
+          })()
         } as AttendanceRecord);
       }
     }
@@ -243,6 +237,56 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
     }
     url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
   }
+
+  // --- Enrichment Step: Fetch Web Punches to fill missing GPS data in Transactions ---
+  try {
+    // Remove date filter to avoid ISO format issues. Just get latest 200.
+    const wpUrl = `/att/api/webpunches/?page_size=200&ordering=-id`;
+    const wpRes = await fetch(wpUrl, { headers });
+    if (wpRes.ok) {
+      const wpRaw = await wpRes.json();
+      const wpList = wpRaw.results || [];
+      const wpMap = new Map();
+
+      wpList.forEach((wp: any) => {
+        // Create fuzzy keys for matching (Transaction time usually matches WebPunch time)
+        const t = new Date(wp.punch_time).getTime();
+        wpMap.set(`${wp.emp_code}_${t}`, wp);
+        // Also add +/- 1 second coverage just in case of second-rounding differences
+        wpMap.set(`${wp.emp_code}_${t + 1000}`, wp);
+        wpMap.set(`${wp.emp_code}_${t - 1000}`, wp);
+      });
+
+      // Enrich logs
+      for (const log of out) {
+        if (log.deviceSn === 'Web' || !log.location) {
+          const logTime = new Date(log.timestamp).getTime();
+          const match = wpMap.get(`${log.employeeId}_${logTime}`);
+          if (match) {
+            const gps = match.gps_location || `${match.latitude},${match.longitude}`;
+            let area = match.area_alias;
+            if ((!area || area === 'Mobile_GPS') && gps && gps.includes(',')) {
+              const [lat, lng] = gps.split(',').map(Number);
+              area = resolveAreaName(lat, lng);
+            }
+
+            if (area) {
+              log.deviceAlias = area;
+              log.location = {
+                lat: match.latitude || 0,
+                lng: match.longitude || 0,
+                address: area
+              };
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("WebPunch enrichment failed", e);
+  }
+  // --------------------------------------------------------------------------------
+
   return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
 
@@ -301,13 +345,32 @@ export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, end
             item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
               AttendanceMethod.FINGERPRINT,
           status: isLate ? 'LATE' : 'ON_TIME',
-          location: item.gps_location && typeof item.gps_location === 'string' ? undefined : (item.latitude && item.longitude ? {
-            lat: parseFloat(item.latitude),
-            lng: parseFloat(item.longitude),
-            address: item.area_alias || 'موقع مسجل'
-          } : undefined),
+          location: (() => {
+            if (item.gps_location && typeof item.gps_location === 'string') {
+              const [latStr, lngStr] = item.gps_location.split(',');
+              const lat = parseFloat(latStr);
+              const lng = parseFloat(lngStr);
+              return { lat, lng, address: resolveAreaName(lat, lng) };
+            }
+            if (item.latitude && item.longitude) {
+              const lat = parseFloat(item.latitude);
+              const lng = parseFloat(item.longitude);
+              return { lat, lng, address: resolveAreaName(lat, lng) };
+            }
+            return undefined;
+          })(),
           deviceSn: item.terminal_sn || undefined,
-          deviceAlias: item.terminal_alias || item.area_alias || undefined
+          deviceAlias: (() => {
+            if (item.terminal_alias) return item.terminal_alias;
+            if (item.area_alias) return item.area_alias;
+            if (item.terminal_sn === 'Web' || !item.terminal_sn) {
+              if (item.gps_location && typeof item.gps_location === 'string') {
+                const [lat, lng] = item.gps_location.split(',').map(Number);
+                return resolveAreaName(lat, lng);
+              }
+            }
+            return undefined;
+          })()
         } as AttendanceRecord);
       }
 
@@ -332,37 +395,146 @@ export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, end
  * SUBMIT GPS ATTENDANCE (REAL)
  * Posts data to the API
  */
+// Helper to format date for ADMS
+const formatDateADMS = (date: Date) => {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 export const submitGPSAttendance = async (
   employeeId: string,
   lat: number,
   lng: number,
-  type: 'CHECK_IN' | 'CHECK_OUT'
-): Promise<boolean> => {
+  type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN'
+): Promise<{ success: boolean; area?: string }> => {
   try {
+    let punchState = '0';
+    switch (type) {
+      case 'CHECK_IN': punchState = '0'; break;
+      case 'CHECK_OUT': punchState = '1'; break;
+      case 'BREAK_OUT': punchState = '2'; break;
+      case 'BREAK_IN': punchState = '3'; break;
+    }
+
+    // Payload matching /att/api/webpunches/ specification
+    const headers = await getHeaders();
+    // Using full path to avoid baseUrl issues (which might be /iclock/api)
+    const empResponse = await fetch(`/personnel/api/employees/?emp_code=${employeeId}`, {
+      method: 'GET',
+      headers
+    });
+
+    if (!empResponse.ok) {
+      throw new Error("Could not fetch employee details for ID lookup");
+    }
+
+    const empData = await empResponse.json();
+    const internalId = empData.data && empData.data.length > 0 ? empData.data[0].id : null;
+
+    if (!internalId) {
+      throw new Error(`Internal ID not found for employee code: ${employeeId}`);
+    }
+
+    // 2. Time Setup (Local Time)
+    const now = new Date();
+    const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString();
+    const punchTime = localIso.replace('T', ' ').split('.')[0];
+
+    // 3. Dynamic Area & Device Mapping (for display)
+    let areaName = 'Riyadh'; // Default
+    let deviceSn = 'RKQ4235200204'; // Default to Riyadh Device
+
+    if (lat > 25.0) {
+      areaName = 'Qassim';
+      deviceSn = 'RKQ4235200199';
+    } else if (lng > 49.0) {
+      areaName = 'Dammam';
+      // deviceSn = ...
+    }
+
+    // 4. Construct Payload (Using WebPunch Endpoint but Spoofing Device)
+    // Try source=1 and real terminal_sn to see if server assigns correct Device Name
     const payload = {
+      company_code: '1',
       emp_code: employeeId,
-      punch_time: new Date().toISOString(), // Or specific format 'YYYY-MM-DD HH:mm:ss'
+      emp: internalId,
+      punch_time: punchTime,
+      punch_state: parseInt(punchState),
+      verify_type: 1, // 1 = Fingerprint/PWD (Device), 101 = GPS
+      source: 1,      // 1 = Device, 3 = Web
+      gps_location: `${lat},${lng}`,
       latitude: lat,
       longitude: lng,
-      punch_state: type === 'CHECK_IN' ? '0' : '1',
-      verify_mode: 'GPS' // Custom flag for your middleware
+      area_alias: areaName,
+      terminal_sn: deviceSn
     };
 
-    const headers = await getHeaders();
-    const response = await fetch(`/personnel/api/transactions/`, {
+    // 5. Submit Web Punch
+    const response = await fetch(`/att/api/webpunches/`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
-      throw new Error("Failed to submit attendance");
+      const t = await response.text();
+      // Specifically handle Duplicate Punch to not crash the UI
+      if (t.includes("Duplicate")) {
+        return { success: true, area: areaName };
+      }
+      throw new Error(`Failed to submit web punch: ${t}`);
     }
 
-    return true;
+    return { success: true, area: areaName };
   } catch (error) {
-    console.error("GPS Submit Error:", error);
+    console.error("GPS Submit Error via ADMS:", error);
     throw error;
+  }
+};
+
+// Helper to get the very last punch state for smart switching
+export const getLastPunch = async (employeeId: string): Promise<{ type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN', timestamp: Date } | null> => {
+  try {
+    const headers = await getHeaders();
+    // Fetch only 1 record, ordered by time desc
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${employeeId}&page_size=1&ordering=-punch_time`, {
+      method: 'GET',
+      headers
+    });
+
+    if (!response.ok) return null;
+
+    const raw = await response.json();
+    const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+
+    if (list.length === 0) return null;
+
+    const item = list[0];
+    const stateMap: Record<string, any> = {
+      '0': 'CHECK_IN',
+      '1': 'CHECK_OUT',
+      '2': 'BREAK_OUT',
+      '3': 'BREAK_IN',
+      '4': 'OVERTIME_IN',
+      '5': 'OVERTIME_OUT'
+    };
+
+    const punchState = String(item.punch_state);
+    // Default to Check In if unknown, but better to return null or map strictly
+    let type = stateMap[punchState] || (punchState === '0' ? 'CHECK_IN' : 'CHECK_OUT');
+
+    // Map Overtime to normal mostly? Or keep distinct?
+    // For our simple UI, let's map OT to standard In/Out
+    if (type === 'OVERTIME_IN') type = 'CHECK_IN';
+    if (type === 'OVERTIME_OUT') type = 'CHECK_OUT';
+
+    return {
+      type: type,
+      timestamp: new Date(item.punch_time)
+    };
+  } catch (e) {
+    console.error("Failed to fetch last punch", e);
+    return null;
   }
 };
 
