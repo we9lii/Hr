@@ -4,16 +4,16 @@ export const LOCATIONS: LocationConfig[] = [
     {
         id: 'ADMIN',
         name: 'الإدارة',
-        lat: 26.3668327,
-        lng: 43.9089633,
+        lat: 26.3668611,
+        lng: 43.9089722,
         radius: 15,
         active: true
     },
     {
         id: 'QASSIM_SHOPS',
         name: 'محلات القصيم',
-        lat: 26.352222,
-        lng: 43.949944,
+        lat: 26.3522500,
+        lng: 43.9499167,
         radius: 15,
         active: true
     },
