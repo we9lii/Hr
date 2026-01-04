@@ -613,47 +613,47 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     <div className="animate-fade-in space-y-8 relative z-10 pb-20">
 
       {/* Header & Controls Section */}
-      <div className="relative overflow-hidden bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl p-8 rounded-3xl border border-white/20 shadow-2xl">
+      <div className="relative overflow-hidden bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl p-4 md:p-8 rounded-3xl border border-white/20 shadow-2xl">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-80" />
 
-        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 md:gap-6 mb-6 md:mb-8">
           <div>
-            <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300 flex items-center gap-3">
-              <div className="p-3 bg-blue-500/10 rounded-2xl backdrop-blur-sm border border-blue-500/20 text-blue-600 dark:text-blue-400">
-                <FileBarChart size={28} />
+            <h2 className="text-xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300 flex items-center gap-3">
+              <div className="p-2 md:p-3 bg-blue-500/10 rounded-2xl backdrop-blur-sm border border-blue-500/20 text-blue-600 dark:text-blue-400">
+                <FileBarChart size={20} className="md:w-7 md:h-7" />
               </div>
               مركز التقارير الذكي
             </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-2 mr-14 max-w-lg leading-relaxed">
+            <p className="text-slate-500 dark:text-slate-400 text-xs md:text-sm font-medium mt-2 mr-12 md:mr-14 max-w-lg leading-relaxed">
               تحليل شامل لبيانات الحضور والانصراف مع إمكانية التصدير المتقدم وتخصيص الفلاتر للحصول على أدق النتائج.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 w-full xl:w-auto">
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
             <button
               onClick={() => setManualModalOpen(true)}
-              className="flex-1 xl:flex-none flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-6 py-3 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all font-bold border border-slate-200 dark:border-slate-700 active:scale-95"
+              className="w-full sm:flex-1 xl:flex-none flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-4 md:px-6 py-2.5 md:py-3 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all font-bold border border-slate-200 dark:border-slate-700 active:scale-95 text-sm md:text-base"
             >
-              <UserPlus size={18} />
+              <UserPlus size={16} className="md:w-[18px]" />
               <span>تصحيح</span>
             </button>
             <button
               onClick={() => setExportModalOpen(true)}
-              className="flex-1 xl:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-2xl hover:shadow-lg hover:shadow-blue-500/25 transition-all font-bold active:scale-95"
+              className="w-full sm:flex-1 xl:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 md:px-8 py-2.5 md:py-3 rounded-2xl hover:shadow-lg hover:shadow-blue-500/25 transition-all font-bold active:scale-95 text-sm md:text-base"
             >
-              <Download size={20} />
+              <Download size={18} className="md:w-5" />
               <span>تصدير البيانات</span>
             </button>
           </div>
         </div>
 
         {/* Filters Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 items-end bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 items-end bg-slate-50/50 dark:bg-slate-800/50 p-4 md:p-6 rounded-2xl border border-slate-100 dark:border-slate-700/50">
 
           {/* Report Type */}
           <div className="xl:col-span-4">
-            <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">نوع التقرير</label>
-            <div className="grid grid-cols-3 gap-2 p-1 bg-white dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
+            <label className="block text-[10px] md:text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">نوع التقرير</label>
+            <div className="grid grid-cols-4 md:grid-cols-3 xl:grid-cols-4 gap-1.5 md:gap-2 p-1 bg-white dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
               <button
                 onClick={() => setReportType('ALL')}
                 className={`py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${reportType === 'ALL' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
@@ -675,9 +675,9 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
               </button>
               <button
                 onClick={() => setReportType('DAILY')}
-                className={`py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${reportType === 'DAILY' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+                className={`py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 md:gap-2 ${reportType === 'DAILY' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
               >
-                <Calendar size={14} />
+                <Calendar size={12} className="hidden sm:block" />
                 يومي
               </button>
             </div>
@@ -864,19 +864,19 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
               <tr className="bg-slate-50/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-[11px] border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider backdrop-blur-sm">
                 {reportType === 'LATE' ? (
                   <>
-                    <th className="p-6 font-bold">المعرف</th>
-                    <th className="p-6 font-bold">الموظف</th>
-                    <th className="p-6 font-bold">إجمالي التأخير</th>
-                    <th className="p-6 font-bold">أيام التأخير</th>
+                    <th className="p-2 md:p-6 font-bold">المعرف</th>
+                    <th className="p-2 md:p-6 font-bold">الموظف</th>
+                    <th className="p-2 md:p-6 font-bold">إجمالي التأخير</th>
+                    <th className="p-2 md:p-6 font-bold">أيام التأخير</th>
                   </>
                 ) : (
                   <>
-                    <th className="p-6 font-bold">الموظف</th>
-                    <th className="p-6 font-bold">التاريخ والوقت</th>
-                    <th className="p-6 font-bold">النوع</th>
-                    <th className="p-6 font-bold">المصدر</th>
-                    <th className="p-6 font-bold">
-                      {reportType === 'DAILY' ? 'التفاصيل / الملاحظات' : 'الموقع / الملاحظات'}
+                    <th className="p-2 md:p-6 font-bold">الموظف</th>
+                    <th className="p-2 md:p-6 font-bold">التاريخ والوقت</th>
+                    <th className="p-2 md:p-6 font-bold">النوع</th>
+                    <th className="p-2 md:p-6 font-bold hidden md:table-cell">المصدر</th>
+                    <th className="p-2 md:p-6 font-bold">
+                      {reportType === 'DAILY' ? 'التفاصيل' : 'الموقع'}
                     </th>
                   </>
                 )}
@@ -910,16 +910,16 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                     if (reportType === 'LATE') {
                       return (
                         <tr key={log.id} className="group hover:bg-red-50/50 dark:hover:bg-red-900/10 transition-colors duration-200">
-                          <td className="p-5 text-slate-400 font-mono text-xs">{log.id}</td>
-                          <td className="p-5">
-                            <div className="font-bold text-slate-800 dark:text-white">{log.name}</div>
+                          <td className="p-2 md:p-5 text-slate-400 font-mono text-[10px] md:text-xs">{log.id}</td>
+                          <td className="p-2 md:p-5">
+                            <div className="font-bold text-slate-800 dark:text-white text-xs md:text-base">{log.name}</div>
                           </td>
-                          <td className="p-5">
-                            <span className="font-bold text-red-600 dark:text-red-400 bg-red-50/50 dark:bg-red-900/20 px-3 py-1 rounded-lg text-xs border border-red-100 dark:border-red-900/30">
+                          <td className="p-2 md:p-5">
+                            <span className="font-bold text-red-600 dark:text-red-400 bg-red-50/50 dark:bg-red-900/20 px-2 py-0.5 md:px-3 md:py-1 rounded-lg text-[10px] md:text-xs border border-red-100 dark:border-red-900/30 whitespace-nowrap">
                               {formatDuration(log.totalMinutes)}
                             </span>
                           </td>
-                          <td className="p-5 text-slate-600 dark:text-slate-400 font-medium">{log.daysLate} يوم</td>
+                          <td className="p-2 md:p-5 text-slate-600 dark:text-slate-400 font-medium text-[10px] md:text-base">{log.daysLate} يوم</td>
                         </tr>
                       );
                     }
@@ -928,53 +928,53 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                     return (
                       <tr key={log.id || idx} className="group hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors duration-200">
                         <td className="p-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 shadow-inner">
+                          <div className="flex items-center gap-2 md:gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-300 shadow-inner">
                               {(log.employeeName || log.empName)?.charAt(0) || '?'}
                             </div>
-                            <div>
-                              <div className="font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{log.employeeName || log.empName}</div>
-                              <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 tracking-wider">{log.employeeId || log.empId}</div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors text-xs md:text-base truncate max-w-[80px] md:max-w-none">{log.employeeName || log.empName}</div>
+                              <div className="text-[9px] md:text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 tracking-wider hidden md:block">{log.employeeId || log.empId}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="p-5 text-slate-600 dark:text-slate-400" dir="ltr">
+                        <td className="p-2 md:p-5 text-slate-600 dark:text-slate-400" dir="ltr">
                           {reportType === 'DAILY' ? (
                             <div className="flex flex-col items-end">
-                              <span className="font-bold text-slate-700 text-xs dark:text-slate-300">{new Date(log.date).toLocaleDateString('ar-SA')}</span>
-                              <span className="text-[10px] text-slate-400">{new Date(log.date).toLocaleDateString('en-US')}</span>
+                              <span className="font-bold text-slate-700 text-[10px] md:text-xs dark:text-slate-300">{new Date(log.date).toLocaleDateString('ar-SA')}</span>
+                              <span className="text-[9px] md:text-[10px] text-slate-400 hidden md:block">{new Date(log.date).toLocaleDateString('en-US')}</span>
                             </div>
                           ) : (
                             <div className="flex flex-col items-end">
-                              <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</span>
-                              <span className="text-[10px] text-slate-400 mt-1">{new Date(log.timestamp).toLocaleDateString('ar-SA-u-ca-gregory')}</span>
+                              <span className="font-mono text-[10px] md:text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 md:px-2 md:py-0.5 rounded">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</span>
+                              <span className="text-[9px] md:text-[10px] text-slate-400 mt-1">{new Date(log.timestamp).toLocaleDateString('ar-SA-u-ca-gregory')}</span>
                             </div>
                           )}
                         </td>
-                        <td className="p-5">
+                        <td className="p-2 md:p-5">
                           {reportType === 'DAILY' ? (
                             <div className="flex flex-col gap-1">
                               {log.firstIn ? (
-                                <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1 rounded flex items-center gap-1 border border-emerald-100">
+                                <span className="text-[9px] md:text-[11px] text-emerald-600 bg-emerald-50 px-1 rounded flex items-center gap-1 border border-emerald-100 whitespace-nowrap">
                                   دخول: {new Date(log.firstIn.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
-                              ) : <span className="text-[11px] text-rose-400">بدون دخول</span>}
+                              ) : <span className="text-[9px] md:text-[11px] text-rose-400 whitespace-nowrap">بدون دخول</span>}
                               {log.lastOut ? (
-                                <span className="text-[11px] text-orange-600 bg-orange-50 px-1 rounded flex items-center gap-1 border border-orange-100">
+                                <span className="text-[9px] md:text-[11px] text-orange-600 bg-orange-50 px-1 rounded flex items-center gap-1 border border-orange-100 whitespace-nowrap">
                                   خروج: {new Date(log.lastOut.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
-                              ) : <span className="text-[11px] text-slate-300">لم يخرج</span>}
+                              ) : <span className="text-[9px] md:text-[11px] text-slate-300 whitespace-nowrap">لم يخرج</span>}
                             </div>
                           ) : (
-                            <span className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border ${log.type === 'CHECK_IN'
+                            <span className={`px-2 py-0.5 md:px-3 md:py-1.5 rounded-lg text-[9px] md:text-[10px] font-bold border whitespace-nowrap ${log.type === 'CHECK_IN'
                               ? 'bg-emerald-50/50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
                               : 'bg-rose-50/50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20'
                               }`}>
-                              {log.type === 'CHECK_IN' ? 'تسجيل دخول' : 'تسجيل خروج'}
+                              {log.type === 'CHECK_IN' ? 'دخول' : 'خروج'}
                             </span>
                           )}
                         </td>
-                        <td className="p-5">
+                        <td className="p-2 md:p-5 hidden md:table-cell">
                           {reportType === 'DAILY' ? (
                             <div className="text-[11px] text-slate-500">
                               {formatDuration(log.breakMinutes)} راحة
@@ -986,16 +986,16 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                             </div>
                           )}
                         </td>
-                        <td className="p-5">
+                        <td className="p-2 md:p-5">
                           {reportType === 'DAILY' ? (
                             <div className="flex flex-col items-start gap-1">
                               {log.lateMinutes > 0 ? (
-                                <span className="text-red-600 text-xs font-bold bg-red-50 px-2 py-0.5 rounded border border-red-100">{formatDuration(log.lateMinutes)} تأخير</span>
+                                <span className="text-red-600 text-[10px] md:text-xs font-bold bg-red-50 px-2 py-0.5 rounded border border-red-100 whitespace-nowrap">{formatDuration(log.lateMinutes)} تأخير</span>
                               ) : <span className="text-emerald-600 text-[10px]">منتظم</span>}
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[200px] block" title={log.location?.address}>
-                              {log.location?.address ? log.location.address : log.location ? `${log.location.lat.toFixed(4)}, ${log.location.lng.toFixed(4)}` : '-'}
+                            <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[80px] md:max-w-[200px] block" title={log.location?.address}>
+                              {log.location?.address ? log.location.address : log.location ? `${log.location.lat.toFixed(4)}` : '-'}
                             </span>
                           )}
                         </td>

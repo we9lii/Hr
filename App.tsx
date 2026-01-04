@@ -83,6 +83,15 @@ const App: React.FC = () => {
         localStorage.removeItem('currentUser');
       }
     }
+
+    // Request Location Permission immediately
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => console.log("Location Access Granted", position.coords),
+        (error) => console.warn("Location Access Denied/Error", error),
+        { enableHighAccuracy: true }
+      );
+    }
   }, []);
 
   const toggleTheme = () => { }; // Disabled
@@ -370,10 +379,7 @@ const App: React.FC = () => {
                 loading={loading}
                 lastUpdatedAt={lastUpdatedAt}
                 onRefresh={loadData}
-                onOpenStatsModal={(type) => {
-                  setStatsModalType(type);
-                  setStatsModalOpen(true);
-                }}
+                onOpenStatsModal={openStatsModal}
                 isDarkMode={isDarkMode}
               />
             )}
@@ -483,12 +489,12 @@ const App: React.FC = () => {
                       <table className="w-full text-right border-collapse">
                         <thead>
                           <tr className="bg-slate-50/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-[11px] border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider backdrop-blur-sm sticky top-0 z-10">
-                            <th className="p-5 font-bold">الموظف</th>
-                            <th className="p-5 font-bold">التاريخ والوقت</th>
-                            <th className="p-5 font-bold">النوع</th>
-                            <th className="p-5 font-bold">المصدر</th>
-                            <th className="p-5 font-bold">الحالة</th>
-                            <th className="p-5 font-bold">الموقع / الجهاز</th>
+                            <th className="p-2 md:p-5 font-bold">الموظف</th>
+                            <th className="p-2 md:p-5 font-bold">التاريخ والوقت</th>
+                            <th className="p-2 md:p-5 font-bold">النوع</th>
+                            <th className="p-2 md:p-5 font-bold hidden md:table-cell">المصدر</th>
+                            <th className="p-2 md:p-5 font-bold hidden md:table-cell">الحالة</th>
+                            <th className="p-2 md:p-5 font-bold">الموقع / الجهاز</th>
                           </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-slate-100 dark:divide-slate-800/50">
@@ -498,24 +504,24 @@ const App: React.FC = () => {
                               onClick={() => setSelectedEmployeeId(log.employeeId)}
                               className="group hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition-colors duration-200 cursor-pointer"
                             >
-                              <td className="p-5">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-sm font-black text-slate-400 dark:text-slate-400 shadow-inner group-hover:scale-110 transition-transform">
+                              <td className="p-2 md:p-5">
+                                <div className="flex items-center gap-2 md:gap-4">
+                                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-xs md:text-sm font-black text-slate-400 dark:text-slate-400 shadow-inner group-hover:scale-110 transition-transform">
                                     {log.employeeName.charAt(0)}
                                   </div>
-                                  <div>
-                                    <div className="font-bold text-slate-800 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors text-base">{log.employeeName}</div>
-                                    <div className="text-xs text-slate-400 font-mono mt-0.5 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-fit">{log.employeeId}</div>
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-slate-800 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors text-xs md:text-base truncate max-w-[80px] md:max-w-none">{log.employeeName}</div>
+                                    <div className="text-[9px] md:text-xs text-slate-400 font-mono mt-0.5 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-fit hidden md:block">{log.employeeId}</div>
                                   </div>
                                 </div>
                               </td>
-                              <td className="p-5 text-slate-600 dark:text-slate-400" dir="ltr">
+                              <td className="p-2 md:p-5 text-slate-600 dark:text-slate-400" dir="ltr">
                                 <div className="flex flex-col items-end">
-                                  <span className="font-mono text-sm font-bold text-slate-800 dark:text-white">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</span>
-                                  <span className="text-[11px] text-slate-400 mt-0.5">{new Date(log.timestamp).toLocaleDateString('ar-SA-u-ca-gregory')}</span>
+                                  <span className="font-mono text-[10px] md:text-sm font-bold text-slate-800 dark:text-white">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</span>
+                                  <span className="text-[9px] md:text-[11px] text-slate-400 mt-0 md:mt-0.5">{new Date(log.timestamp).toLocaleDateString('ar-SA-u-ca-gregory')}</span>
                                 </div>
                               </td>
-                              <td className="p-5">
+                              <td className="p-2 md:p-5">
                                 {(() => {
                                   let label = 'غير معروف';
                                   let colorClass = 'bg-slate-50/50 dark:bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-500/20';
@@ -533,31 +539,31 @@ const App: React.FC = () => {
                                       dotClass = 'bg-rose-500';
                                       break;
                                     case 'BREAK_IN':
-                                      label = 'عودة من استراحة';
+                                      label = 'عودة'; // Shortened
                                       colorClass = 'bg-blue-50/50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20';
                                       dotClass = 'bg-blue-500';
                                       break;
                                     case 'BREAK_OUT':
-                                      label = 'خروج للاستراحة';
+                                      label = 'استراحة'; // Shortened
                                       colorClass = 'bg-amber-50/50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20';
                                       dotClass = 'bg-amber-500';
                                       break;
                                   }
 
                                   return (
-                                    <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 w-fit ${colorClass}`}>
+                                    <span className={`px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[9px] md:text-xs font-bold border flex items-center gap-1 md:gap-2 w-fit whitespace-nowrap ${colorClass}`}>
                                       <div className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
                                       {label}
                                     </span>
                                   );
                                 })()}
                               </td>
-                              <td className="p-5">
+                              <td className="p-2 md:p-5 hidden md:table-cell">
                                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
                                   {log.method}
                                 </span>
                               </td>
-                              <td className="p-5">
+                              <td className="p-2 md:p-5 hidden md:table-cell">
                                 {log.status === 'LATE' && (
                                   <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg border border-amber-100 dark:border-amber-900/30 w-fit">
                                     <AlertTriangle size={14} />
@@ -571,9 +577,9 @@ const App: React.FC = () => {
                                   </div>
                                 )}
                               </td>
-                              <td className="p-5">
-                                <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[200px] block" title={log.location?.address}>
-                                  {log.deviceAlias || (log.deviceSn ? `جهاز ${log.deviceSn}` : (log.location ? (log.location.address || `${log.location.lat.toFixed(4)}, ${log.location.lng.toFixed(4)}`) : '-'))}
+                              <td className="p-2 md:p-5">
+                                <span className="text-[9px] md:text-xs text-slate-500 dark:text-slate-400 truncate max-w-[80px] md:max-w-[200px] block" title={log.location?.address}>
+                                  {log.deviceAlias || (log.deviceSn ? (log.deviceSn === 'Web' ? 'الجوال' : `${log.deviceSn}`) : (log.location ? (log.location.address || `${log.location.lat.toFixed(4)}...`) : '-'))}
                                 </span>
                               </td>
                             </tr>

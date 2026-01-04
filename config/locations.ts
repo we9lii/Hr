@@ -6,7 +6,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'الإدارة',
         lat: 26.3668327,
         lng: 43.9089633,
-        radius: 50, // 100 meters default
+        radius: 15,
         active: true
     },
     {
@@ -14,7 +14,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'محلات القصيم',
         lat: 26.352222,
         lng: 43.949944,
-        radius: 50,
+        radius: 15,
         active: true
     },
     {
@@ -22,7 +22,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'معرض الرياض',
         lat: 24.6425281,
         lng: 46.7240967,
-        radius: 50,
+        radius: 15,
         active: true
     },
     {
@@ -30,7 +30,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'مستودع القصيم', // Mapped to Iron2 (Al Quraishi WH)
         lat: 26.2426731,
         lng: 44.0251749,
-        radius: 50,
+        radius: 25,
         active: true
     },
     {
@@ -38,7 +38,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع طبرجل',
         lat: 30.1468929,
         lng: 38.3993353,
-        radius: 50,
+        radius: 15,
         active: true
     },
     {
@@ -46,7 +46,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع وادي الدواسر',
         lat: 20.4551073,
         lng: 44.8291926,
-        radius: 50,
+        radius: 15,
         active: true
     },
     {
@@ -54,7 +54,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع الصرار',
         lat: 26.9747897,
         lng: 48.3935929,
-        radius: 50,
+        radius: 15,
         active: true
     },
     {
@@ -62,7 +62,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'مستودع الحديد القصيم', // Mapped to Iron1
         lat: 26.388297,
         lng: 44.027435,
-        radius: 50,
+        radius: 25,
         active: true
     },
     {
@@ -70,7 +70,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع الدمام',
         lat: 26.3968125,
         lng: 50.0398125,
-        radius: 50,
+        radius: 15,
         active: true
     },
     {
@@ -78,7 +78,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'القسم النسائي',
         lat: 26.3748889,
         lng: 43.895,
-        radius: 50,
+        radius: 15,
         active: true
     }
 ];

@@ -28,7 +28,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLog
       {/* Mobile Header */}
       <div className="md:hidden bg-white dark:bg-slate-900/80 backdrop-blur-md text-slate-800 dark:text-white p-4 flex justify-between items-center shadow-sm sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800">
         <h1 className="font-bold text-lg flex items-center gap-2">
-          <span className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-xs">HR</span>
+          <img src="/icon-192.png" alt="Logo" className="w-8 h-8 object-contain" />
           نظام الحضور
         </h1>
         <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">

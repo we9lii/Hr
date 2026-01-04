@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device } from '../types';
 import { getDeviceConfig } from '../config/shifts';
 import { LOCATIONS } from '../config/locations';
@@ -138,9 +139,12 @@ const enrichLogsWithWebPunches = async (logs: AttendanceRecord[], minDate: Date)
   return logs;
 };
 
+// Dynamic Base URL: Use Absolute for APK, Relative (Proxy) for Web
+const BASE_FOR_ENV = Capacitor.isNativePlatform() ? 'https://hr-bnyq.onrender.com' : '';
+
 // Real API Configuration
 const API_CONFIG = {
-  baseUrl: '/iclock/api',
+  baseUrl: `${BASE_FOR_ENV}/iclock/api`,
   username: 'admin',
   password: 'Admin@123',
 };
@@ -149,7 +153,7 @@ let AUTH_TOKEN: string | null = null;
 
 const ensureAuthToken = async (): Promise<string> => {
   if (AUTH_TOKEN) return AUTH_TOKEN;
-  const response = await fetch(`/jwt-api-token-auth/`, {
+  const response = await fetch(`${BASE_FOR_ENV}/jwt-api-token-auth/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: API_CONFIG.username, password: API_CONFIG.password })
@@ -343,7 +347,14 @@ export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): 
     if (foundOlder || shouldStop || !next) {
       break;
     }
-    url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
+    // Robust Next Link Handling
+    try {
+      const nextUrl = new URL(next);
+      url = `${BASE_FOR_ENV}${nextUrl.pathname}${nextUrl.search}`;
+    } catch (e) {
+      // Fallback if next is relative or invalid
+      url = next.startsWith('http') ? next : `${BASE_FOR_ENV}${next}`;
+    }
   }
 
   // Apply Shared Enrichment
@@ -486,7 +497,7 @@ export const submitGPSAttendance = async (
     // Payload matching /att/api/webpunches/ specification
     const headers = await getHeaders();
     // Using full path to avoid baseUrl issues (which might be /iclock/api)
-    const empResponse = await fetch(`/personnel/api/employees/?emp_code=${employeeId}`, {
+    const empResponse = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/?emp_code=${employeeId}`, {
       method: 'GET',
       headers
     });
@@ -542,7 +553,7 @@ export const submitGPSAttendance = async (
     };
 
     // 5. Submit Web Punch
-    const response = await fetch(`/att/api/webpunches/`, {
+    const response = await fetch(`${BASE_FOR_ENV}/att/api/webpunches/`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
@@ -747,7 +758,7 @@ export const fetchDeviceEmployees = async (terminalSn: string): Promise<{ empCod
 
 export const fetchEmployeeCount = async (): Promise<number> => {
   const headers = await getHeaders();
-  const response = await fetch(`/personnel/api/employees/?page_size=1`, {
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/?page_size=1`, {
     method: 'GET',
     headers
   });
@@ -762,34 +773,47 @@ export const fetchEmployeeCount = async (): Promise<number> => {
 
 export const fetchAllEmployees = async (): Promise<{ code: string; name: string }[]> => {
   const headers = await getHeaders();
-  let url = `/personnel/api/employees/?page_size=200`;
+  let url = `${BASE_FOR_ENV}/personnel/api/employees/?page_size=200`;
   const map = new Map<string, string>();
+
   for (let i = 0; i < 50; i++) {
-    const response = await fetch(url, { method: 'GET', headers });
-    if (!response.ok) {
-      const t = await response.text();
-      throw new Error(`Server Error: ${response.status} - ${t}`);
-    }
-    const raw = await response.json();
-    const list: any[] = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw?.data)
-        ? raw.data
-        : Array.isArray(raw?.results)
-          ? raw.results
-          : [];
-    list.forEach((it: any) => {
-      const code = String(it.emp_code || it.user_id || it.id || '').trim();
-      if (!code) return;
-      const inactive = (it.is_active === false) || (it.active === false) || (String(it.status || '').toLowerCase() === 'inactive') || (String(it.employment_status || '').toLowerCase() === 'terminated');
-      if (inactive) return;
-      const name = String(it.emp_name || `${it.first_name || ''} ${it.last_name || ''}`.trim() || code);
-      if (!map.has(code)) map.set(code, name);
-    });
-    const next: string | undefined = raw?.next;
-    if (next) {
-      url = next.startsWith('http') ? next.replace('http://qssun.dyndns.org:8085', '') : next;
-    } else {
+    try {
+      const response = await fetch(url, { method: 'GET', headers });
+      if (!response.ok) {
+        const t = await response.text();
+        throw new Error(`Server Error: ${response.status} - ${t}`);
+      }
+      const raw = await response.json();
+      const list: any[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : Array.isArray(raw?.results)
+            ? raw.results
+            : [];
+
+      list.forEach((it: any) => {
+        const code = String(it.emp_code || it.user_id || it.id || '').trim();
+        if (!code) return;
+        const inactive = (it.is_active === false) || (it.active === false) || (String(it.status || '').toLowerCase() === 'inactive') || (String(it.employment_status || '').toLowerCase() === 'terminated');
+        if (inactive) return;
+        const name = String(it.emp_name || `${it.first_name || ''} ${it.last_name || ''}`.trim() || code);
+        if (!map.has(code)) map.set(code, name);
+      });
+
+      const next: string | undefined = raw?.next;
+      if (next) {
+        try {
+          const nextUrl = new URL(next);
+          url = `${BASE_FOR_ENV}${nextUrl.pathname}${nextUrl.search}`;
+        } catch (e) {
+          url = next.startsWith('http') ? next : `${BASE_FOR_ENV}${next}`;
+        }
+      } else {
+        break;
+      }
+    } catch (e) {
+      console.error("Fetch Loop Error:", e);
       break;
     }
   }

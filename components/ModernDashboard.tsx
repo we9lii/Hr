@@ -206,11 +206,11 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
 
 
                 {/* Recent Activity Table */}
-                <motion.div variants={itemVariants} className="liquid-glass p-6 rounded-3xl flex flex-col relative overflow-hidden">
+                <motion.div variants={itemVariants} className="liquid-glass p-3 md:p-6 rounded-3xl flex flex-col relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-red-400" />
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-slate-500 dark:text-white/70" />
+                    <div className="flex items-center justify-between mb-4 md:mb-6">
+                        <h3 className="font-bold text-base md:text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                            <Clock className="w-4 h-4 md:w-5 md:h-5 text-slate-500 dark:text-white/70" />
                             آخر النشاطات
                         </h3>
                     </div>
@@ -221,19 +221,19 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                         ) : (
                             <table className="w-full text-right border-collapse">
                                 <thead className="border-b border-slate-200 dark:border-white/10">
-                                    <tr className="bg-slate-50/50 dark:bg-white/5 text-slate-500 dark:text-slate-300 text-xs">
-                                        <th className="p-3">الموظف</th>
-                                        <th className="p-3">الجهاز</th>
-                                        <th className="p-3">الوقت</th>
-                                        <th className="p-3">النوع</th>
+                                    <tr className="bg-slate-50/50 dark:bg-white/5 text-slate-500 dark:text-slate-300 text-[10px] md:text-xs">
+                                        <th className="p-2 md:p-3">الموظف</th>
+                                        <th className="p-2 md:p-3">الجهاز</th>
+                                        <th className="p-2 md:p-3">الوقت</th>
+                                        <th className="p-2 md:p-3">النوع</th>
                                     </tr>
                                 </thead>
                                 <tbody className="text-sm">
                                     {pageLogs.map((log, i) => (
                                         <tr key={log.id || i} className="hover:bg-slate-50 dark:hover:bg-white/5 border-b border-slate-200 dark:border-white/10 transition-colors">
-                                            <td className="p-3 font-bold text-slate-800 dark:text-white">{log.employeeName}</td>
-                                            <td className="p-5">
-                                                <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[200px] block" title={log.location?.address}>
+                                            <td className="p-2 md:p-3 font-bold text-slate-800 dark:text-white text-[10px] md:text-sm">{log.employeeName}</td>
+                                            <td className="p-2 md:p-5">
+                                                <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 truncate max-w-[100px] md:max-w-[200px] block" title={log.location?.address}>
                                                     {log.location?.address || log.deviceAlias || (
                                                         log.deviceSn === 'Web' ? 'تطبيق الجوال' : (log.deviceSn || '-')
                                                     )}
@@ -245,15 +245,16 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                                             <Wifi size={10} className="text-emerald-500" /> :
                                                             <Radar size={10} className={log.accuracy > 50 ? "text-red-500 animate-pulse" : "text-amber-500"} />
                                                         }
-                                                        <span className={`text-[10px] font-mono ${log.accuracy < 20 ? "text-emerald-500" :
+                                                        <span className={`text-[9px] md:text-[10px] font-mono ${log.accuracy < 20 ? "text-emerald-500" :
                                                             log.accuracy > 50 ? "text-red-400 font-bold" : "text-amber-500"
                                                             }`}>
-                                                            دقة: {log.accuracy}m
+                                                            {log.accuracy}m
                                                         </span>
                                                     </div>
                                                 )}
-                                            </td>              <td className="p-3 text-slate-600 dark:text-slate-300 font-mono text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
-                                            <td className="p-3">
+                                            </td>
+                                            <td className="p-2 md:p-3 text-slate-600 dark:text-slate-300 font-mono text-[10px] md:text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
+                                            <td className="p-2 md:p-3">
                                                 {(() => {
                                                     let label = 'غير معروف';
                                                     let color = 'bg-slate-500/20 text-slate-300';
@@ -268,16 +269,16 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                                             color = 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
                                                             break;
                                                         case 'BREAK_IN':
-                                                            label = 'عودة من استراحة';
+                                                            label = 'عودة'; // Shortened for mobile
                                                             color = 'bg-blue-500/20 text-blue-300 border border-blue-500/30';
                                                             break;
                                                         case 'BREAK_OUT':
-                                                            label = 'خروج للاستراحة';
+                                                            label = 'استراحة'; // Shortened for mobile
                                                             color = 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
                                                             break;
                                                     }
                                                     return (
-                                                        <span className={`px-3 py-1 rounded-lg text-xs font-bold ${color}`}>
+                                                        <span className={`px-2 py-0.5 md:px-3 md:py-1 rounded-lg text-[10px] md:text-xs font-bold whitespace-nowrap ${color}`}>
                                                             {label}
                                                         </span>
                                                     );
