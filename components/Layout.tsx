@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LayoutDashboard, Users, MapPin, ClipboardList, Menu, X, Settings, LogOut, Map, BarChart3, Moon, Sun, ChevronLeft } from 'lucide-react';
+import { User } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -8,9 +9,10 @@ interface LayoutProps {
   onLogout: () => void;
   isDarkMode: boolean;
   toggleTheme: () => void;
+  user: User;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLogout, isDarkMode, toggleTheme }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLogout, isDarkMode, toggleTheme, user }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const menuItems = [
@@ -108,11 +110,11 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLog
           <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700/50">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md border-2 border-white dark:border-slate-800">
-                WE
+                {user.name.charAt(0).toUpperCase()}
               </div>
               <div className="overflow-hidden">
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate w-24">we9li</p>
-                <p className="text-[10px] text-slate-400">Super Admin</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate w-24">{user.name}</p>
+                <p className="text-[10px] text-slate-400">{user.role === 'ADMIN' ? 'مدير النظام' : 'موظف'}</p>
               </div>
             </div>
             <button

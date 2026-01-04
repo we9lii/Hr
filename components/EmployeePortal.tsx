@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { LOCATIONS } from '../config/locations';
-import { MapPin, LogOut, Calendar, CheckCircle2, Navigation, AlertTriangle, Fingerprint, Sun, Moon, ShieldAlert, ShieldCheck, Coffee, ArrowRightCircle, ArrowLeftCircle, MoreHorizontal, X, Sparkles } from 'lucide-react';
+import { MapPin, LogOut, Calendar, CheckCircle2, Navigation, AlertTriangle, Fingerprint, Sun, Moon, ShieldAlert, ShieldCheck, Coffee, ArrowRightCircle, ArrowLeftCircle, MoreHorizontal, X, Sparkles, Lock, Radar, Wifi } from 'lucide-react';
 import { submitGPSAttendance, submitBiometricAttendance, getLastPunch } from '../services/api';
 
 interface EmployeePortalProps {
@@ -31,9 +31,10 @@ type PunchType = 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN';
 
 const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkMode, toggleTheme }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number, lng: number, accuracy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [scanText, setScanText] = useState(''); // Security Animation Text
   const [bioLoading, setBioLoading] = useState(false);
 
   const [lastPunch, setLastPunch] = useState<Date | null>(null);
@@ -86,7 +87,8 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
 
           setLocation({
             lat: currentLat,
-            lng: currentLng
+            lng: currentLng,
+            accuracy: position.coords.accuracy
           });
 
           // Check Geofences
@@ -127,18 +129,34 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
     // Dev Bypass: Allow if isDev, regardless of location
     if (!isDev && (!location || !nearestLocation?.allowed)) return;
 
-    // For Devs: Require selection if forcing manual
+    // Dev Force Branch Prompt
     if (isDev && !nearestLocation?.allowed && !selectedBranch) {
       alert("يا فيصل، اختر الفرع عشان نقدر نمشيك 😉");
       return;
     }
 
     setLoading(true);
+
+    // FAKE SECURITY SCAN (Psychological Trick) 🕵️‍♂️
+    const securitySteps = [
+      "جاري تحليل إحداثيات GPS...",
+      "التحقق من بصمة الجهاز...",
+      "تأمين بروتوكول الاتصال...",
+      "جاري تسجيل الحركة..."
+    ];
+
+    for (const step of securitySteps) {
+      setScanText(step);
+      await new Promise(r => setTimeout(r, 800)); // 800ms per step
+    }
+
     try {
       const lat = location ? location.lat : 0;
       const lng = location ? location.lng : 0;
+      const acc = location ? location.accuracy : undefined;
+
       // Pass selectedBranch if Dev Mode active
-      const response = await submitGPSAttendance(user.id, lat, lng, selectedType, selectedBranch || undefined);
+      const response = await submitGPSAttendance(user.id, lat, lng, selectedType, selectedBranch || undefined, acc);
 
       const now = new Date();
       setLastPunch(now);
@@ -157,6 +175,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
       alert("حدث خطأ في الاتصال");
     } finally {
       setLoading(false);
+      setScanText('');
     }
   };
 
@@ -279,8 +298,24 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
                   {nearestLocation.allowed ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
                   {nearestLocation.allowed ? `موقع آمن: ${nearestLocation.name}` : `أنت خارج نطاق العمل (${nearestLocation.name})`}
                 </div>
+
+                {/* Accuracy Meter Visual */}
+                {location && (
+                  <div className="flex items-center gap-2 mt-2 bg-white/40 dark:bg-black/20 px-3 py-1 rounded-full border border-white/20">
+                    {location.accuracy < 20 ? <Wifi size={14} className="text-emerald-600 dark:text-emerald-400" /> : <Radar size={14} className="text-amber-600 animate-pulse" />}
+                    <span className="font-mono text-[10px] opacity-80">
+                      دقة الإشارة:
+                      <strong className={`mx-1 ${location.accuracy < 20 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                        {Math.round(location.accuracy)}m
+                      </strong>
+                      {location.accuracy < 20 ? '(ممتاز)' : '(ضعيف)'}
+                    </span>
+                  </div>
+                )}
+
+
                 {!nearestLocation.allowed && nearestLocation.distance && (
-                  <div className="text-[10px] opacity-80 font-mono">
+                  <div className="text-[10px] opacity-80 font-mono mt-1">
                     تبعد {Math.round(nearestLocation.distance)} متر عن النطاق المسموح
                   </div>
                 )}
@@ -370,7 +405,15 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
                         `}
             >
               {loading ? (
-                <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="flex flex-col items-center gap-2 animate-pulse">
+                  <Lock size={32} className="text-white mb-2" />
+                  <span className="text-white text-[10px] font-mono tracking-widest uppercase">{scanText || 'جاري المعالجة...'}</span>
+                  <div className="flex gap-1 mt-1">
+                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce"></span>
+                  </div>
+                </div>
               ) : (
                 <>
                   <div className="mb-3 bg-white/20 p-4 rounded-full backdrop-blur-sm shadow-inner ring-1 ring-white/30">

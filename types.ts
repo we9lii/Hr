@@ -49,6 +49,7 @@ export interface AttendanceRecord {
   status: 'ON_TIME' | 'LATE' | 'EARLY_LEAVE' | 'OVERTIME';
   deviceSn?: string;
   deviceAlias?: string;
+  accuracy?: number;
 }
 
 export interface Device {

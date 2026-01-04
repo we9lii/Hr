@@ -117,8 +117,16 @@ const enrichLogsWithWebPunches = async (logs: AttendanceRecord[], minDate: Date)
             log.location = {
               lat: match.latitude ? parseFloat(match.latitude) : 0,
               lng: match.longitude ? parseFloat(match.longitude) : 0,
-              address: displayName // Show "Mobile App - Location"
+              address: displayName
             };
+
+            // Extract Accuracy from Memo (ACC:15m)
+            if (match.memo && match.memo.includes('ACC:')) {
+              const accMatch = match.memo.match(/ACC:(\d+)m/);
+              if (accMatch && accMatch[1]) {
+                log.accuracy = parseInt(accMatch[1], 10);
+              }
+            }
             // Do NOT overwrite deviceSn. Let it be 'Web'.
           }
         }
@@ -463,7 +471,8 @@ export const submitGPSAttendance = async (
   lat: number,
   lng: number,
   type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN',
-  manualArea?: string
+  manualArea?: string,
+  accuracy?: number
 ): Promise<{ success: boolean; area?: string }> => {
   try {
     let punchState = '0';
@@ -528,7 +537,8 @@ export const submitGPSAttendance = async (
       latitude: lat,
       longitude: lng,
       area_alias: areaName,
-      terminal_sn: deviceSn
+      terminal_sn: deviceSn,
+      memo: accuracy ? `ACC:${Math.round(accuracy)}m` : 'ACC:N/A'
     };
 
     // 5. Submit Web Punch

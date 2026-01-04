@@ -4,11 +4,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import { motion } from 'framer-motion';
-import {
-    Users, CheckCircle, Clock, XCircle,
-    Wifi, WifiOff, Activity, RefreshCw,
-    ArrowUpRight, Monitor, AlertTriangle
-} from 'lucide-react';
+import { Activity, Clock, Users, UserCheck, UserX, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight, MoreHorizontal, Filter, Wifi, Radar, RefreshCw, CheckCircle, XCircle, Monitor, AlertTriangle } from 'lucide-react';
 import { DashboardStats, AttendanceRecord, Device } from '../types';
 
 interface ModernDashboardProps {
@@ -235,6 +231,20 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                                         log.deviceSn === 'Web' ? 'تطبيق الجوال' : (log.deviceSn || '-')
                                                     )}
                                                 </span>
+                                                {/* Accuracy Indicator */}
+                                                {log.accuracy !== undefined && (
+                                                    <div className="flex items-center gap-1 mt-1">
+                                                        {log.accuracy < 20 ?
+                                                            <Wifi size={10} className="text-emerald-500" /> :
+                                                            <Radar size={10} className={log.accuracy > 50 ? "text-red-500 animate-pulse" : "text-amber-500"} />
+                                                        }
+                                                        <span className={`text-[10px] font-mono ${log.accuracy < 20 ? "text-emerald-500" :
+                                                            log.accuracy > 50 ? "text-red-400 font-bold" : "text-amber-500"
+                                                            }`}>
+                                                            دقة: {log.accuracy}m
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </td>              <td className="p-3 text-slate-300 font-mono text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
                                             <td className="p-3">
                                                 {(() => {
