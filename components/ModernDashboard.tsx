@@ -15,6 +15,7 @@ interface ModernDashboardProps {
     lastUpdatedAt: Date | null;
     onRefresh: () => void;
     onOpenStatsModal: (type: 'TOTAL' | 'PRESENT' | 'LATE' | 'ABSENT') => void;
+    isDarkMode: boolean;
 }
 
 const COLORS = {
@@ -37,16 +38,16 @@ const StatCard: React.FC<{
         whileHover={{ y: -5 }}
         whileTap={{ scale: 0.98 }}
         onClick={onClick}
-        className={`relative overflow-hidden rounded-3xl p-6 text-right group w-full liquid-glass transition-all hover:bg-white/10`}
+        className={`relative overflow-hidden rounded-3xl p-6 text-right group w-full liquid-glass transition-all hover:bg-slate-50 dark:hover:bg-white/10`}
     >
-        <div className="relative z-10 flex flex-col items-start text-white">
+        <div className="relative z-10 flex flex-col items-start text-slate-800 dark:text-white">
             <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-white/20 rounded-xl text-white/80">
+                <div className="p-2 bg-blue-100 dark:bg-white/20 rounded-xl text-blue-600 dark:text-white/80">
                     {icon}
                 </div>
-                <span className="text-sm font-medium text-white/90">{title}</span>
+                <span className="text-sm font-medium text-slate-500 dark:text-white/90">{title}</span>
             </div>
-            <span className="text-4xl font-extrabold tracking-tight text-white">{value}</span>
+            <span className="text-4xl font-extrabold tracking-tight text-slate-800 dark:text-white">{value}</span>
         </div>
     </motion.button>
 );
@@ -58,7 +59,8 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
     loading,
     lastUpdatedAt,
     onRefresh,
-    onOpenStatsModal
+    onOpenStatsModal,
+    isDarkMode
 }) => {
 
     // -- Analytical Data Prep --
@@ -124,25 +126,25 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                 <StatCard
                     title="إجمالي الموظفين"
                     value={stats?.totalEmployees || 0}
-                    icon={<Users className="w-6 h-6 text-slate-400" />}
+                    icon={<Users className="w-6 h-6 text-blue-600 dark:text-slate-200" />}
                     onClick={() => onOpenStatsModal('TOTAL')}
                 />
                 <StatCard
                     title="حضور اليوم"
                     value={stats?.presentToday || 0}
-                    icon={<CheckCircle className="w-6 h-6 text-slate-400" />}
+                    icon={<CheckCircle className="w-6 h-6 text-emerald-600 dark:text-slate-200" />}
                     onClick={() => onOpenStatsModal('PRESENT')}
                 />
                 <StatCard
                     title="حالات التأخير"
                     value={stats?.lateToday || 0}
-                    icon={<Clock className="w-6 h-6 text-slate-400" />}
+                    icon={<Clock className="w-6 h-6 text-amber-600 dark:text-slate-200" />}
                     onClick={() => onOpenStatsModal('LATE')}
                 />
                 <StatCard
                     title="غياب / إجازة"
                     value={stats?.onLeave || 0}
-                    icon={<XCircle className="w-6 h-6 text-slate-400" />}
+                    icon={<XCircle className="w-6 h-6 text-red-600 dark:text-slate-200" />}
                     onClick={() => onOpenStatsModal('ABSENT')}
                 />
             </div>
@@ -153,8 +155,8 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                 {/* Attendance Breakdown Chart */}
                 <motion.div variants={itemVariants} className="liquid-glass p-6 rounded-3xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-red-400" />
-                    <h3 className="font-bold text-lg text-white mb-6 flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-white/70" />
+                    <h3 className="font-bold text-lg text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-slate-500 dark:text-white/70" />
                         تحليل الحضور
                     </h3>
                     <div className="h-[250px] w-full relative">
@@ -182,16 +184,21 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                     ))}
                                 </Pie>
                                 <RechartsTooltip
-                                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', borderRadius: '12px' }}
-                                    itemStyle={{ color: '#fff' }}
+                                    contentStyle={{
+                                        backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+                                        borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                                        color: isDarkMode ? '#fff' : '#0f172a',
+                                        borderRadius: '12px'
+                                    }}
+                                    itemStyle={{ color: isDarkMode ? '#fff' : '#0f172a' }}
                                 />
                                 <Legend verticalAlign="bottom" height={36} iconType="circle" />
                             </PieChart>
                         </ResponsiveContainer>
                         {/* Center Text Overlay */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
-                            <span className="text-3xl font-bold text-white">{stats?.presentToday || 0}</span>
-                            <span className="text-xs text-white/70">حاضر</span>
+                            <span className="text-3xl font-bold text-slate-800 dark:text-white">{stats?.presentToday || 0}</span>
+                            <span className="text-xs text-slate-500 dark:text-white/70">حاضر</span>
                         </div>
                     </div>
                 </motion.div>
@@ -202,8 +209,8 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                 <motion.div variants={itemVariants} className="liquid-glass p-6 rounded-3xl flex flex-col relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-red-400" />
                     <div className="flex items-center justify-between mb-6">
-                        <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-white/70" />
+                        <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                            <Clock className="w-5 h-5 text-slate-500 dark:text-white/70" />
                             آخر النشاطات
                         </h3>
                     </div>
@@ -213,8 +220,8 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                             <div className="text-center text-slate-300 text-sm py-8">لا توجد نشاطات حديثة</div>
                         ) : (
                             <table className="w-full text-right border-collapse">
-                                <thead>
-                                    <tr className="bg-white/5 text-slate-300 text-xs border-b border-white/10">
+                                <thead className="border-b border-slate-200 dark:border-white/10">
+                                    <tr className="bg-slate-50/50 dark:bg-white/5 text-slate-500 dark:text-slate-300 text-xs">
                                         <th className="p-3">الموظف</th>
                                         <th className="p-3">الجهاز</th>
                                         <th className="p-3">الوقت</th>
@@ -223,8 +230,8 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                 </thead>
                                 <tbody className="text-sm">
                                     {pageLogs.map((log, i) => (
-                                        <tr key={log.id || i} className="hover:bg-white/5 border-b border-white/10 transition-colors">
-                                            <td className="p-3 font-bold text-white">{log.employeeName}</td>
+                                        <tr key={log.id || i} className="hover:bg-slate-50 dark:hover:bg-white/5 border-b border-slate-200 dark:border-white/10 transition-colors">
+                                            <td className="p-3 font-bold text-slate-800 dark:text-white">{log.employeeName}</td>
                                             <td className="p-5">
                                                 <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[200px] block" title={log.location?.address}>
                                                     {log.location?.address || log.deviceAlias || (
@@ -245,7 +252,7 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                                         </span>
                                                     </div>
                                                 )}
-                                            </td>              <td className="p-3 text-slate-300 font-mono text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
+                                            </td>              <td className="p-3 text-slate-600 dark:text-slate-300 font-mono text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
                                             <td className="p-3">
                                                 {(() => {
                                                     let label = 'غير معروف';

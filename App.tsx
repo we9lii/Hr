@@ -19,7 +19,8 @@ const App: React.FC = () => {
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // Theme State
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Theme State (Forced Dark)
+  const isDarkMode = true;
 
   // Data State
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -68,14 +69,12 @@ const App: React.FC = () => {
     return matchesSearch && matchesDate && matchesType;
   });
 
-  // Initialization: Enforce Dark Mode & Auto Login
+  // Initialization: Enforce Dark Mode
   useEffect(() => {
-    // 1. Force Dark Mode
-    setIsDarkMode(true);
     document.documentElement.classList.add('dark');
-    localStorage.setItem('theme', 'dark'); // Persist just in case other tabs/logic read it
+    localStorage.setItem('theme', 'dark');
 
-    // 2. Auto Login
+    // Auto Login
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
       try {
@@ -86,8 +85,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Removed toggleTheme - System is Force Dark
-  const toggleTheme = () => { }; // No-op to keep prop stability if needed strictly, or verify usage.
+  const toggleTheme = () => { }; // Disabled
 
   const loadData = async () => {
     setLoading(true);
@@ -372,7 +370,11 @@ const App: React.FC = () => {
                 loading={loading}
                 lastUpdatedAt={lastUpdatedAt}
                 onRefresh={loadData}
-                onOpenStatsModal={openStatsModal}
+                onOpenStatsModal={(type) => {
+                  setStatsModalType(type);
+                  setStatsModalOpen(true);
+                }}
+                isDarkMode={isDarkMode}
               />
             )}
             {/* صفحة إدارة المواقع معطلة مؤقتًا */}

@@ -33,17 +33,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       <div className="w-full max-w-md relative z-10 animate-fade-in">
 
         {/* Header Logo */}
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-blue-400 rounded-2xl mx-auto flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-6 border border-white/10">
-            <Fingerprint className="text-white w-12 h-12" />
+        <div className="text-center mb-10">
+          <div className="w-24 h-24 mx-auto mb-6 relative">
+            <div className="absolute inset-0 bg-blue-500/30 blur-2xl rounded-full animate-pulse-slow"></div>
+            <img src="/icon-192.png" alt="Qssun Logo" className="w-full h-full relative z-10 drop-shadow-2xl" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">نظام إدارة الحضور</h1>
-          <p className="text-slate-400">بوابة الدخول الموحدة</p>
+          <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">نظام إدارة الحضور</h1>
+          <p className="text-slate-400 text-lg font-light">بوابة الدخول الموحدة</p>
         </div>
 
-        <div className="bg-slate-800/80 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl animate-in fade-in zoom-in-95 duration-300">
-          <div className="flex items-center justify-center mb-6">
-            <h2 className="text-xl font-bold text-white">
+        <div className="bg-[#0f172a]/60 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-50"></div>
+
+          <div className="flex items-center justify-center mb-8">
+            <h2 className="text-2xl font-bold text-white tracking-wide">
               تسجيل الدخول
             </h2>
           </div>
@@ -59,7 +62,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg py-3 pr-10 pl-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  className="w-full bg-slate-900/50 border border-white/10 rounded-xl py-4 pr-12 pl-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all font-medium"
                   placeholder=""
                   autoFocus
                   required
@@ -77,7 +80,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg py-3 pr-10 pl-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  className="w-full bg-slate-900/50 border border-white/10 rounded-xl py-4 pr-12 pl-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all font-medium"
                   placeholder=""
                   required
                 />
@@ -103,7 +106,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-all mt-8 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25 active:scale-95"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

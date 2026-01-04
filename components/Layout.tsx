@@ -44,8 +44,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLog
         {/* Sidebar Header */}
         <div className="p-8 pb-4">
           <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white flex items-center gap-3 tracking-tight">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-              <Users size={20} />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden">
+              <img src="/icon-192.png" alt="Logo" className="w-full h-full object-contain drop-shadow-md" />
             </div>
             Qssun
           </h2>
@@ -92,20 +92,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onLog
         {/* Footer */}
         <div className="p-4 m-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/50">
           {/* Theme Toggle */}
-          <div className="flex items-center justify-between mb-4 p-1 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
-            <button
-              onClick={() => !isDarkMode && toggleTheme()}
-              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-xs font-medium transition-all ${!isDarkMode ? 'bg-amber-100 text-amber-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Sun size={14} /> فاتح
-            </button>
-            <button
-              onClick={() => isDarkMode && toggleTheme()}
-              className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-md text-xs font-medium transition-all ${isDarkMode ? 'bg-blue-900/40 text-blue-300 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Moon size={14} /> داكن
-            </button>
-          </div>
+
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700/50">
             <div className="flex items-center gap-3">
