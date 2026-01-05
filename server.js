@@ -3,7 +3,6 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import mysql from 'mysql2/promise';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,15 +13,10 @@ const PORT = process.env.PORT || 3000;
 // Enable CORS for all routes
 app.use(cors());
 
-// Database Connection
-const pool = mysql.createPool(process.env.DATABASE_URL || {
-    // Fallback for dev (replace with real vars later or use env)
-    host: 'localhost',
-    user: 'root',
-    database: 'test'
-});
+// HTTP Bridge Configuration (Bypass Port 3306 Block)
+const SYNC_URL = 'https://qssun.solar/api/iclock/sync_log.php';
 
-// Proxy Configuration (Existing)
+// Proxy Configuration
 const target = 'http://qssun.dyndns.org:8085';
 const proxyConfig = {
     target,
@@ -32,6 +26,7 @@ const proxyConfig = {
 
 // ZKTeco ADMS Listener (Must be BEFORE proxies)
 // 1. Handshake & Data Push
+// Note: express.text() is scoped ONLY to this route to avoid breaking proxies
 app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
     const { SN, table, options } = req.query;
     console.log(`[ZKTeco] Request: ${req.method} ${req.url}`);
@@ -57,26 +52,32 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
                 const parts = line.split('\t');
                 if (parts.length >= 2) {
                     const [userId, time, status, verify, workCode] = parts;
-                    // Insert into DB
-                    await pool.execute(
-                        `INSERT IGNORE INTO attendance_logs (device_sn, user_id, check_time, status, verify_mode, work_code) 
-                         VALUES (?, ?, ?, ?, ?, ?)`,
-                        [SN, userId, time, status || 0, verify || 1, workCode || 0]
-                    );
 
-                    // Update Device Status
-                    await pool.execute(
-                        `INSERT INTO devices (serial_number, last_activity, status) 
-                         VALUES (?, NOW(), 'ONLINE') 
-                         ON DUPLICATE KEY UPDATE last_activity = NOW(), status = 'ONLINE'`,
-                        [SN]
-                    );
-                    count++;
+                    // HTTP Bridge: Sync to cPanel via HTTPS
+                    const payload = {
+                        device_sn: SN,
+                        user_id: userId,
+                        check_time: time,
+                        status: status || 0,
+                        verify_mode: verify || 1,
+                        work_code: workCode || 0
+                    };
+
+                    // Use global fetch (Node 18+)
+                    const response = await fetch(SYNC_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const result = await response.json();
+                    if (result.status === 'success') count++;
+                    else console.error(`[ZKTeco] Sync Failed:`, result);
                 }
             }
-            console.log(`[ZKTeco] Saved ${count} logs`);
+            console.log(`[ZKTeco] Synced ${count} logs via Bridge`);
         } catch (error) {
-            console.error('[ZKTeco] DB Error:', error);
+            console.error('[ZKTeco] Bridge Error:', error);
         }
 
         return res.send('OK');
