@@ -14,9 +14,6 @@ const PORT = process.env.PORT || 3000;
 // Enable CORS for all routes
 app.use(cors());
 
-// Body Parser for raw text (ADMS sends tab-delimited text)
-app.use(express.text({ type: '*/*' }));
-
 // Database Connection
 const pool = mysql.createPool(process.env.DATABASE_URL || {
     // Fallback for dev (replace with real vars later or use env)
@@ -35,7 +32,7 @@ const proxyConfig = {
 
 // ZKTeco ADMS Listener (Must be BEFORE proxies)
 // 1. Handshake & Data Push
-app.all('/iclock/cdata', async (req, res) => {
+app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
     const { SN, table, options } = req.query;
     console.log(`[ZKTeco] Request: ${req.method} ${req.url}`);
 
