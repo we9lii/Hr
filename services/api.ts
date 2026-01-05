@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
-import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device } from '../types';
+import { Device } from '@capacitor/device';
+import { AttendanceMethod, AttendanceRecord, DashboardStats, User, Device as DeviceInfo } from '../types';
 import { getDeviceConfig } from '../config/shifts';
 import { LOCATIONS } from '../config/locations';
 
@@ -149,6 +150,9 @@ const API_CONFIG = {
   password: 'Admin@123',
 };
 
+// SECURITY API
+const SECURITY_API_URL = 'https://qssun.solar/api/security';
+
 let AUTH_TOKEN: string | null = null;
 
 const ensureAuthToken = async (): Promise<string> => {
@@ -204,15 +208,51 @@ export const loginUser = async (username: string, password?: string): Promise<Us
   }
 
   // 2. Real Employee Login (Default Fallback)
-  // Default Password Rule: 4 digits + 2 letters (e.g., '1234ab')
-  const DEFAULT_PASSWORD = '1234ab';
-
-  if (password !== DEFAULT_PASSWORD) {
-    throw new Error("كلمة المرور غير صحيحة");
-  }
-
-  // Verify Employee Exists
   try {
+    // Default Password Rule: 4 digits + 2 letters (e.g., '1234ab')
+    const DEFAULT_PASSWORD = '1234ab';
+
+    if (password !== DEFAULT_PASSWORD) {
+      throw new Error("كلمة المرور غير صحيحة");
+    }
+
+    // 3. Device Binding Check (Security Layer)
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const deviceId = await Device.getId();
+        const uuid = deviceId.uuid;
+        const info = await Device.getInfo();
+        const model = info.model;
+
+        // Check Device Status
+        const checkRes = await fetch(`${SECURITY_API_URL}/check_device.php?emp_id=${username}&device_uuid=${uuid}`);
+        const checkData = await checkRes.json();
+
+        if (checkData.status === 'BLOCKED') {
+          throw new Error("هذا الحساب مرتبط بجهاز آخر. تواصل مع الإدارة.");
+        }
+
+        if (checkData.status === 'NEW_USER') {
+          // Bind this device to user
+          await fetch(`${SECURITY_API_URL}/bind_device.php`, {
+            method: 'POST',
+            body: JSON.stringify({
+              emp_id: username,
+              device_uuid: uuid,
+              device_model: model
+            })
+          });
+        }
+        // If ALLOWED, proceed normally
+      } catch (e: any) {
+        console.error("Device Security Check Failed", e);
+        // Optional: Fail login if security check fails?
+        // throw new Error("فشل التحقق من أمان الجهاز");
+        if (e.message.includes("مرتبط بجهاز آخر")) throw e;
+      }
+    }
+
+    // Verify Employee Exists
     const headers = await getHeaders();
     const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${username}&page_size=1`, {
       method: 'GET',
@@ -713,7 +753,7 @@ export const getStats = (records: AttendanceRecord[]): DashboardStats => {
   };
 };
 
-export const fetchDevices = async (): Promise<Device[]> => {
+export const fetchDevices = async (): Promise<DeviceInfo[]> => {
   const headers = await getHeaders();
   const response = await fetch(`${API_CONFIG.baseUrl}/terminals/?page_size=200&ordering=-last_activity`, {
     method: 'GET',
