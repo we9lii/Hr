@@ -30,6 +30,12 @@ export default defineConfig(({ mode }) => {
           target: 'https://hr-bnyq.onrender.com',
           changeOrigin: true,
           secure: false
+        },
+        '/biometric_api': {
+          target: 'https://qssun.solar/api',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/biometric_api/, '')
         }
       }
     },

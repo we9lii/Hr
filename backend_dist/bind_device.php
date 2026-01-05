@@ -1,14 +1,19 @@
 <?php
-include_once 'db_connect.php';
+include_once 'security_db_connect.php';
 
-$data = json_decode(file_get_contents("php://input"));
+$raw_input = file_get_contents("php://input");
+$data = json_decode($raw_input);
 
 $emp_id = $data->emp_id ?? '';
 $device_uuid = $data->device_uuid ?? '';
 $device_model = $data->device_model ?? 'Unknown';
 
 if (empty($emp_id) || empty($device_uuid)) {
-    echo json_encode(["status" => "ERROR", "message" => "Missing parameters"]);
+    echo json_encode([
+        "status" => "ERROR",
+        "message" => "Missing parameters",
+        "debug_received" => $raw_input
+    ]);
     exit();
 }
 

@@ -1,5 +1,5 @@
 <?php
-include_once 'db_connect.php';
+include_once 'security_db_connect.php';
 
 $emp_id = $_GET['emp_id'] ?? '';
 $device_uuid = $_GET['device_uuid'] ?? '';

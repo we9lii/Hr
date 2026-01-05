@@ -12,9 +12,9 @@ $username = "qssunsol_qssun_user";
 $password = "g3QL]cRAHvny";
 
 try {
-    $conn = new PDO("mysql:host=" . $host . ";dbname=" . $db_name, $username, $password);
-    $conn->exec("set names utf8");
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = new PDO("mysql:host=" . $host . ";dbname=" . $db_name, $username, $password);
+    $pdo->exec("set names utf8");
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $exception) {
     echo json_encode(["status" => "ERROR", "message" => "Connection error: " . $exception->getMessage()]);
     exit();

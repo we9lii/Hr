@@ -144,14 +144,14 @@ const enrichLogsWithWebPunches = async (logs: AttendanceRecord[], minDate: Date)
 const BASE_FOR_ENV = Capacitor.isNativePlatform() ? 'https://hr-bnyq.onrender.com' : '';
 
 // Real API Configuration
-const API_CONFIG = {
+export const API_CONFIG = {
   baseUrl: `${BASE_FOR_ENV}/iclock/api`,
   username: 'admin',
   password: 'Admin@123',
 };
 
 // SECURITY API
-const SECURITY_API_URL = 'https://qssun.solar/api/security';
+const SECURITY_API_URL = 'https://qssun.solar';
 
 let AUTH_TOKEN: string | null = null;
 
@@ -220,7 +220,8 @@ export const loginUser = async (username: string, password?: string): Promise<Us
     if (Capacitor.isNativePlatform()) {
       try {
         const deviceId = await Device.getId();
-        const uuid = deviceId.uuid;
+        // Capacitor v5+ uses 'identifier', older used 'uuid'
+        const uuid = deviceId.identifier || (deviceId as any).uuid;
         const info = await Device.getInfo();
         const model = info.model;
 
@@ -233,22 +234,24 @@ export const loginUser = async (username: string, password?: string): Promise<Us
         }
 
         if (checkData.status === 'NEW_USER') {
-          // Bind this device to user
-          await fetch(`${SECURITY_API_URL}/bind_device.php`, {
-            method: 'POST',
-            body: JSON.stringify({
+          // THROW SPECIAL ERROR TO TRIGGER UI CONFIRMATION
+          throw {
+            code: 'BIND_REQUIRED',
+            message: 'يجب ربط هذا الجهاز بحسابك للاستمرار',
+            details: {
               emp_id: username,
               device_uuid: uuid,
               device_model: model
-            })
-          });
+            }
+          };
         }
         // If ALLOWED, proceed normally
       } catch (e: any) {
+        if (e.code === 'BIND_REQUIRED') throw e; // Re-throw custom error
         console.error("Device Security Check Failed", e);
         // Optional: Fail login if security check fails?
         // throw new Error("فشل التحقق من أمان الجهاز");
-        if (e.message.includes("مرتبط بجهاز آخر")) throw e;
+        if (e.message && e.message.includes("مرتبط بجهاز آخر")) throw e;
       }
     }
 
@@ -283,8 +286,27 @@ export const loginUser = async (username: string, password?: string): Promise<Us
     };
 
   } catch (error: any) {
+    if (error.code === 'BIND_REQUIRED') throw error; // Pass through to UI
     console.error("Login verification failed", error);
     throw new Error(error.message || "حدث خطأ أثناء التحقق من بيانات الموظف");
+  }
+};
+
+// EXPORT BIND DEVICE FUNCTION FOR UI
+export const bindDevice = async (emp_id: string, device_uuid: string, device_model: string) => {
+  try {
+    const bindRes = await fetch(`${SECURITY_API_URL}/bind_device.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emp_id, device_uuid, device_model })
+    });
+    const bindData = await bindRes.json();
+    if (bindData.status !== 'SUCCESS') {
+      throw new Error(bindData.message || "فشل ربط الجهاز");
+    }
+    return true;
+  } catch (e: any) {
+    throw new Error(e.message || "فشل الاتصال بالخادم");
   }
 };
 

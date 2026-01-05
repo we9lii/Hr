@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Layout from './components/Layout';
-import { fetchAttendanceLogs, loginUser, fetchDevices, fetchEmployeeCount, fetchDeviceEmployees, fetchAllEmployees, fetchEmployeeLogs } from './services/api';
+import { fetchAttendanceLogs, loginUser, fetchDevices, fetchEmployeeCount, fetchDeviceEmployees, fetchAllEmployees, fetchEmployeeLogs, bindDevice } from './services/api';
 
 // GPSAttendance page disabled temporarily
 import EmployeePortal from './components/EmployeePortal';
@@ -9,14 +9,17 @@ import LocationManager from './components/LocationManager';
 import Reports from './components/Reports';
 import { AttendanceRecord, DashboardStats, User, UserRole, LocationConfig, Device } from './types';
 import { getStats } from './services/api';
-import { Clock, CheckCircle, XCircle, RefreshCw, Users as UsersIcon, Sparkles, WifiOff, AlertTriangle, ArrowUpRight } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, RefreshCw, Users as UsersIcon, Sparkles, WifiOff, AlertTriangle, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import ModernDashboard from './components/ModernDashboard';
 import DeviceManager from './components/DeviceManager';
+import LiveBiometricLogs from './components/LiveBiometricLogs';
 
 const App: React.FC = () => {
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [bindModalOpen, setBindModalOpen] = useState(false);
+  const [pendingBind, setPendingBind] = useState<any>(null);
 
   // Theme State
   // Theme State (Forced Dark)
@@ -166,7 +169,28 @@ const App: React.FC = () => {
         localStorage.setItem('currentUser', JSON.stringify(user));
       }
     } catch (err: any) {
+      if (err.code === 'BIND_REQUIRED') {
+        setPendingBind({ ...err.details, password, rememberMe });
+        setBindModalOpen(true);
+        return;
+      }
       setLoginError(err.message || "بيانات الدخول غير صحيحة");
+    }
+  };
+
+  const handleConfirmBind = async () => {
+    if (!pendingBind) return;
+    try {
+      setLoading(true);
+      await bindDevice(pendingBind.emp_id, pendingBind.device_uuid, pendingBind.device_model);
+      setBindModalOpen(false);
+      // Auto-login after bind
+      await handleLogin(pendingBind.emp_id, pendingBind.password, pendingBind.rememberMe);
+      alert("تم ربط الجهاز بنجاح ✅");
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -279,6 +303,42 @@ const App: React.FC = () => {
               </div>
             )}
             <LoginScreen onLogin={handleLogin} />
+
+            {/* Device Binding Confirmation Modal */}
+            {bindModalOpen && (
+              <div className="absolute inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                <div className="bg-[#0f172a] border border-blue-500/30 rounded-3xl p-6 max-w-sm w-full shadow-2xl relative overflow-hidden text-center">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
+
+                  <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+                    <ShieldCheck size={32} className="text-blue-400" />
+                  </div>
+
+                  <h3 className="text-xl font-bold text-white mb-2">ربط جهاز جديد</h3>
+                  <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                    هذا الجهاز غير مرتبط بحسابك. هل أنت متأكد من رغبتك في ربط الحساب بهذا الجهاز؟
+                    <br />
+                    <span className="text-yellow-500/80 text-xs mt-2 block">ملاحظة: لن تتمكن من الدخول من جهاز آخر بعد الموافقة.</span>
+                  </p>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleConfirmBind}
+                      disabled={loading}
+                      className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-blue-500/20"
+                    >
+                      {loading ? 'جاري الربط...' : 'نعم، اربط الجهاز'}
+                    </button>
+                    <button
+                      onClick={() => setBindModalOpen(false)}
+                      className="px-4 py-3 bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-colors border border-slate-700"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : currentUser.role === 'EMPLOYEE' ? (
           <EmployeePortal
@@ -599,6 +659,8 @@ const App: React.FC = () => {
             {activeTab === 'settings' && (
               <DeviceManager onDevicesUpdated={setDevices} />
             )}
+
+            {activeTab === 'biometric' && <LiveBiometricLogs />}
 
             {activeTab === 'locations' && <LocationManager />}
 
