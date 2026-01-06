@@ -64,7 +64,7 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
                     if (parts.length >= 2) {
                         const [userId, time, status, verify, workCode] = parts;
                         // HTTP Bridge: Sync Log
-                        await fetch(SYNC_URL, {
+                        const resLog = await fetch(SYNC_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -76,7 +76,10 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
                                 work_code: workCode || 0
                             })
                         });
-                        count++;
+                        const logText = await resLog.text();
+                        console.log(`[ZKTeco] Log Sync Response (${resLog.status}):`, logText);
+
+                        if (resLog.ok) count++;
                     }
                 }
                 console.log(`[ZKTeco] Synced ${count} logs`);
