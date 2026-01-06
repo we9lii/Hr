@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Clock, CheckCircle, Wifi, Users, AlertTriangle, WifiOff, RefreshCw, UserPlus } from 'lucide-react';
 import { API_CONFIG } from '../services/api';
+import { getDeviceConfig } from '../config/shifts';
 
 interface DeviceLog {
     id: number;
@@ -86,8 +87,16 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
 
     // Helper to resolve device nickname
     const getDeviceName = (sn: string) => {
+        // Priority 1: DB Name (from Devices table)
         const device = devices.find(d => d.serial_number === sn);
-        return device?.device_name || sn; // If no name in DB, show SN
+        if (device?.device_name) return device.device_name;
+
+        // Priority 2: Config Name (from shifts.ts)
+        const config = getDeviceConfig({ sn });
+        if (config.alias && config.alias !== `جهاز ${sn}`) return config.alias;
+
+        // Priority 3: Raw Serial Number
+        return sn;
     };
 
     // Helper to resolve employee name (Priority: Direct DB Join > Synced User > System Exact > System Padded)

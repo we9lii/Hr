@@ -102,6 +102,14 @@ export const DEVICE_RULES: DeviceRule[] = [
             { start: '16:30', end: '20:30' }
         ],
         aliasOverride: 'فرع طبرجل'
+    },
+    // 11. جهاز تجريبي ( فيصل ) (Developers Device - Local Testing)
+    {
+        matcher: (d) => d.sn === 'AF4C232560143' || (d.alias || '').includes('Test'),
+        shifts: [
+            { start: '09:00', end: '17:00' }
+        ],
+        aliasOverride: 'جهاز تجريبي ( فيصل )'
     }
 ];
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Device } from '../types';
 import { fetchDevices } from '../services/api';
-import { getDeviceConfig } from '../config/shifts';
+import { getDeviceConfig, DEVICE_RULES } from '../config/shifts';
 import { Settings, Smartphone, Clock, Code2, AlertCircle } from 'lucide-react';
 
 interface DeviceManagerProps {
@@ -31,6 +31,24 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                     shifts: config.shifts
                 };
             });
+
+            // Inject Config-Only Devices (e.g. Developer Device) if not in DB
+            // We check specifically for our manual Test Device since it has a known SN in the config
+            const testDeviceSN = 'AF4C232560143';
+            const exists = merged.find(d => d.serial_number === testDeviceSN);
+
+            if (!exists) {
+                const config = getDeviceConfig({ sn: testDeviceSN });
+                merged.push({
+                    id: 9999, // Dummy ID
+                    serial_number: testDeviceSN,
+                    device_name: config.alias || 'Unknown',
+                    status: 'OFFLINE',
+                    last_activity: new Date().toISOString(),
+                    alias: config.alias,
+                    shifts: config.shifts
+                } as any);
+            }
 
             setDevices(merged);
             if (onDevicesUpdated) onDevicesUpdated(merged);
@@ -73,8 +91,8 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                             <div
                                 key={device.sn}
                                 className={`bg-white dark:bg-[#1e293b] rounded-2xl border transition-all duration-300 relative overflow-hidden group ${isExpanded
-                                        ? 'col-span-1 md:col-span-2 lg:col-span-3 border-purple-500 shadow-xl shadow-purple-500/10 ring-1 ring-purple-500/50 z-10'
-                                        : 'border-slate-200 dark:border-slate-800 hover:border-purple-400/50 hover:shadow-md'
+                                    ? 'col-span-1 md:col-span-2 lg:col-span-3 border-purple-500 shadow-xl shadow-purple-500/10 ring-1 ring-purple-500/50 z-10'
+                                    : 'border-slate-200 dark:border-slate-800 hover:border-purple-400/50 hover:shadow-md'
                                     }`}
                             >
                                 {/* Header / Summary View */}
@@ -101,8 +119,8 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
 
                                     <div className="flex items-center gap-3">
                                         <div className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${config.shifts.length > 0
-                                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30 dark:text-emerald-400'
-                                                : 'bg-slate-50 text-slate-400 border-slate-100 dark:bg-slate-800 dark:border-slate-700'
+                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30 dark:text-emerald-400'
+                                            : 'bg-slate-50 text-slate-400 border-slate-100 dark:bg-slate-800 dark:border-slate-700'
                                             }`}>
                                             {config.shifts.length > 0 ? (config.shifts.length === 2 ? 'فترتين' : 'فترة واحدة') : 'غير محدد'}
                                         </div>
