@@ -39,7 +39,7 @@ const biometricProxyConfig = {
 // Note: express.text() is scoped ONLY to this route to avoid breaking proxies
 app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
     const { SN, table, options } = req.query;
-    console.log(`[ZKTeco] Request: ${req.method} ${req.url}`);
+    console.log(`[ZKTeco] Request: ${req.method} ${req.url} (Type: ${req.headers['content-type']})`);
 
     // Handshake (First Connection)
     if (req.method === 'GET' && options === 'all') {
@@ -115,12 +115,15 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
                         };
                         console.log(`[ZKTeco] Syncing User:`, payload);
 
-                        await fetch(SYNC_USER_URL, {
+                        const resRequest = await fetch(SYNC_USER_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
                         });
-                        count++;
+                        const resText = await resRequest.text();
+                        console.log(`[ZKTeco] Sync Response (${resRequest.status}):`, resText);
+
+                        if (resRequest.ok) count++;
                     }
                 }
                 console.log(`[ZKTeco] Synced ${count} users`);
