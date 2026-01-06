@@ -95,6 +95,7 @@ app.all('/iclock/getrequest', async (req, res) => {
 
 
 // Apply Proxies (For other requests)
+app.use('/iclock/api', createProxyMiddleware(proxyConfig));
 app.use('/personnel/api', createProxyMiddleware(proxyConfig));
 app.use('/att/api', createProxyMiddleware(proxyConfig));
 app.use('/jwt-api-token-auth', createProxyMiddleware(proxyConfig));
