@@ -189,27 +189,32 @@ async function processUserLine(line, SN) {
     const SYNC_USER_URL = 'https://qssun.solar/api/iclock/sync_user.php';
     let userId, name, priv, pass, card;
 
-    // 1. Try Standard Tab-Delimited: User_PIN\tName\tPrivilege\tPassword\tCard
-    [userId, name, priv, pass, card] = line.split('\t');
-
-    // 2. Try Key=Value Format (Found in OPERLOG or varying firmware)
-    if ((!name || !userId) && line.includes('=')) {
+    // A. Detect Key=Value Format (Found in OPERLOG or varying firmware)
+    if (line.includes('=')) {
         const map = {};
         line.split('\t').forEach(p => {
             const parts = p.split('=');
             if (parts.length >= 2) {
                 const k = parts[0].trim();
-                const v = parts.slice(1).join('=').trim(); // Handle values with = inside?
+                const v = parts.slice(1).join('=').trim();
                 if (k) map[k] = v;
             }
         });
 
-        // Map Keys (Handle Aliases found in logs)
-        userId = map['PIN'] || map['USER PIN'];
+        // Strict Key Check: We only want USER info, not FP (Fingerprint) info
+        // FP PIN is for fingerprint templates. USER PIN is for user info.
+        if (map['FP PIN']) return false; // Ignore Fingerprint Templates
+
+        userId = map['USER PIN'] || map['PIN'];
         name = map['Name'];
         priv = map['Pri'];
         pass = map['Passwd'];
         card = map['Card'];
+
+    } else {
+        // B. Fallback to Standard Tab-Delimited: User_PIN\tName\tPrivilege\tPassword\tCard
+        // Only if it looks like a clean data line (no equals sign)
+        [userId, name, priv, pass, card] = line.split('\t');
     }
 
     // 3. Sync if we found a valid User ID
