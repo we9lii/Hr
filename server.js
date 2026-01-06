@@ -16,12 +16,22 @@ app.use(cors());
 // HTTP Bridge Configuration (Bypass Port 3306 Block)
 const SYNC_URL = 'https://qssun.solar/api/iclock/sync_log.php';
 
-// Proxy Configuration
+// Proxy Configuration (BioTime)
 const target = 'http://qssun.dyndns.org:8085';
 const proxyConfig = {
     target,
     changeOrigin: true,
     secure: false,
+};
+
+// Proxy Configuration (Local cPanel API)
+const biometricProxyConfig = {
+    target: 'https://qssun.solar/api',
+    changeOrigin: true,
+    secure: true,
+    pathRewrite: {
+        '^/biometric_api': '' // Remove /biometric_api prefix when forwarding
+    }
 };
 
 // ZKTeco ADMS Listener (Must be BEFORE proxies)
@@ -99,6 +109,7 @@ app.use('/iclock/api', createProxyMiddleware(proxyConfig));
 app.use('/personnel/api', createProxyMiddleware(proxyConfig));
 app.use('/att/api', createProxyMiddleware(proxyConfig));
 app.use('/jwt-api-token-auth', createProxyMiddleware(proxyConfig));
+app.use('/biometric_api', createProxyMiddleware(biometricProxyConfig));
 
 // Serve Static Files (Build Output)
 app.use(express.static(path.join(__dirname, 'dist')));
