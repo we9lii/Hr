@@ -8,11 +8,13 @@ header("Content-Type: application/json; charset=UTF-8");
 require_once 'db_connect.php'; // Ensure db_connect.php exists in same folder or adjust path
 
 try {
-    // 1. Fetch Latest 50 Logs
-    // We join with devices to get the alias, but if alias is null, we send device_sn
+    // 1. Fetch Latest 50 Logs with User Names
+    // JOIN with biometric_users to get the name directly from the DB
     $logsSql = "SELECT 
-                    l.id, l.device_sn, l.user_id, l.check_time, l.status, l.verify_mode, l.created_at
+                    l.id, l.device_sn, l.user_id, l.check_time, l.status, l.verify_mode, l.created_at,
+                    u.name as user_name
                 FROM attendance_logs l 
+                LEFT JOIN biometric_users u ON l.user_id = u.user_id
                 ORDER BY l.check_time DESC 
                 LIMIT 50";
 

@@ -27,16 +27,23 @@ try {
 
     if ($exists) {
         // Update
-        $sql = "UPDATE biometric_users SET name = ?, role = ?, card_number = ?, password = ? WHERE id = ?";
+        // Update - Only update fields if they are not empty/null in the input
+        // This prevents overwriting valid data with NULLs if a partial sync occurs
+        $sql = "UPDATE biometric_users SET 
+                name = COALESCE(NULLIF(?, ''), name), 
+                role = COALESCE(NULLIF(?, ''), role), 
+                card_number = COALESCE(NULLIF(?, ''), card_number), 
+                password = COALESCE(NULLIF(?, ''), password) 
+                WHERE id = ?";
         $updateStmt = $pdo->prepare($sql);
         $updateStmt->execute([
-            $data['name'],
-            $data['role'],
-            $data['card_number'],
-            $data['password'],
+            $data['name'] ?? null,
+            $data['role'] ?? null,
+            $data['card_number'] ?? null,
+            $data['password'] ?? null,
             $exists['id']
         ]);
-        echo json_encode(["status" => "success", "message" => "User updated", "id" => $exists['id']]);
+        echo json_encode(["status" => "success", "message" => "User updated (merged)", "id" => $exists['id']]);
     } else {
         // Insert
         $sql = "INSERT INTO biometric_users (user_id, name, role, card_number, password, device_sn) VALUES (?, ?, ?, ?, ?, ?)";

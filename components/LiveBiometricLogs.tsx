@@ -90,8 +90,11 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
         return device?.device_name || sn; // If no name in DB, show SN
     };
 
-    // Helper to resolve employee name (Priority: Synced > System Exact > System Padded)
-    const getEmployeeName = (userId: string) => {
+    // Helper to resolve employee name (Priority: Direct DB Join > Synced User > System Exact > System Padded)
+    const getEmployeeName = (userId: string, logName?: string) => {
+        // Priority 0: Direct from Database (via simplified JOIN in PHP)
+        if (logName) return logName;
+
         // Priority 1: Synced User from Device (Exact Match)
         const syncedUser = syncedUsers.find(u => u.user_id === userId);
         if (syncedUser && syncedUser.name) return syncedUser.name;
@@ -209,7 +212,8 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-sm">
                             {logs.map((log) => {
-                                const empName = getEmployeeName(log.user_id);
+                                // Pass the direct DB name to the helper
+                                const empName = getEmployeeName(log.user_id, (log as any).user_name);
                                 const statusInfo = getStatusLabel(log);
                                 const isNewUser = empName !== 'موظف غير معرف' && !employees[log.user_id] && !employees[parseInt(log.user_id)];
 

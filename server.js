@@ -85,6 +85,20 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
             } catch (e) { console.error(e); }
         }
 
+        else if (table === 'OPERLOG') {
+            // Smart Sync: detailed handling of operation logs
+            // If we detect user changes, trigger a sync
+            try {
+                // Check if any line indicates a user modification
+                // Common Opcodes: 4 (User Create), 5 (User Modify), etc.
+                // We'll be aggressive: Any OPERLOG triggers a check to be safe
+                console.log(`[Smart Sync] Operational Log received from ${SN}. Scheduling User Info update.`);
+                hasSentForceQuery = false; // Reset flag to allow re-sending the query
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
         else if (table === 'USERINFO') {
             // USERINFO Format: User_PIN\tName\tPrivilege\tPassword\tCard\tGroup\tTimezone\tVerify
             const SYNC_USER_URL = 'https://qssun.solar/api/iclock/sync_user.php';
