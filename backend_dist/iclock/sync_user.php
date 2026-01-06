@@ -9,7 +9,9 @@ header("Access-Control-Allow-Methods: POST");
 require_once '../db_connect.php';
 
 // Get JSON Input
-$data = json_decode(file_get_contents("php://input"), true);
+$json = file_get_contents("php://input");
+file_put_contents("user_debug.log", date('Y-m-d H:i:s') . " - Input: " . $json . "\n", FILE_APPEND);
+$data = json_decode($json, true);
 
 if (!$data) {
     http_response_code(400);

@@ -83,30 +83,42 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
         }
 
         else if (table === 'USERINFO') {
-            // USERINFO Format: User_PIN	Name	Privilege	Password	Card	Group	Timezone	Verify
+            // USERINFO Format: User_PIN\tName\tPrivilege\tPassword\tCard\tGroup\tTimezone\tVerify
             const SYNC_USER_URL = 'https://qssun.solar/api/iclock/sync_user.php';
             try {
                 for (const line of lines) {
-                    const parts = line.split('\t');
-                    if (parts.length >= 1) {
-                        // ZK Protocol sometimes varies, but usually:
-                        // PIN, Name, Password, Card, Priv, Group...
-                        // Let's assume standard push params or parse liberally
-                        // Actually, ZK push: USERINFO usually sends:
-                        // User_PIN \t Name \t Privilege \t Password \t Card \t ...
-                        const [userId, name, priv, pass, card] = parts;
+                    // Try parsing as standard tab-delimited
+                    let [userId, name, priv, pass, card] = line.split('\t');
+
+                    // If that failed to get a name, maybe it's Key=Value format?
+                    if (!name && line.includes('=')) {
+                        const map: any = {};
+                        line.split('\t').forEach(p => {
+                            const [k, v] = p.split('=');
+                            if (k && v) map[k] = v;
+                        });
+                        if (map['PIN']) userId = map['PIN'];
+                        if (map['Name']) name = map['Name'];
+                        if (map['Pri']) priv = map['Pri'];
+                        if (map['Passwd']) pass = map['Passwd'];
+                        if (map['Card']) card = map['Card'];
+                    }
+
+                    if (userId) {
+                        const payload = {
+                            device_sn: SN,
+                            user_id: userId,
+                            name: name || '', // Ensure empty string if undefined
+                            role: priv || 0,
+                            password: pass || '',
+                            card_number: card || ''
+                        };
+                        console.log(`[ZKTeco] Syncing User:`, payload);
 
                         await fetch(SYNC_USER_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                device_sn: SN,
-                                user_id: userId,
-                                name: name || '',
-                                role: priv || 0,
-                                password: pass || '',
-                                card_number: card || ''
-                            })
+                            body: JSON.stringify(payload)
                         });
                         count++;
                     }
