@@ -87,63 +87,35 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
 
         else if (table === 'OPERLOG') {
             // Smart Sync: detailed handling of operation logs
-            // If we detect user changes, trigger a sync
+            // Logic: Scan for user data lines AND trigger smart sync if needed
             try {
-                // Check if any line indicates a user modification
-                // Common Opcodes: 4 (User Create), 5 (User Modify), etc.
-                // We'll be aggressive: Any OPERLOG triggers a check to be safe
-                console.log(`[Smart Sync] Operational Log received from ${SN}. Scheduling User Info update.`);
-                hasSentForceQuery = false; // Reset flag to allow re-sending the query
+                console.log(`[Smart Sync] Operational Log received from ${SN}. Checking for User Info...`);
+
+                // 1. Try to parse User Info from OPERLOG lines (sometimes it comes here!)
+                let userSyncCount = 0;
+                for (const line of lines) {
+                    if (processUserLine(line, SN)) userSyncCount++;
+                }
+                if (userSyncCount > 0) {
+                    console.log(`[Smart Sync] Extracted ${userSyncCount} users directly from OPERLOG.`);
+                } else {
+                    // 2. If no direct user data found, but it looks like an operation (e.g. OPLOG 4/5), trigger a pull
+                    console.log(`[Smart Sync] No direct user data in OPERLOG. Scheduling Force Query.`);
+                    hasSentForceQuery = false;
+                }
             } catch (e) {
                 console.error(e);
             }
         }
 
         else if (table === 'USERINFO') {
-            // USERINFO Format: User_PIN\tName\tPrivilege\tPassword\tCard\tGroup\tTimezone\tVerify
-            const SYNC_USER_URL = 'https://qssun.solar/api/iclock/sync_user.php';
+            // USERINFO: Standard handling
             try {
+                let count = 0;
                 for (const line of lines) {
-                    // Try parsing as standard tab-delimited
-                    let [userId, name, priv, pass, card] = line.split('\t');
-
-                    // If that failed to get a name, maybe it's Key=Value format?
-                    if (!name && line.includes('=')) {
-                        const map = {};
-                        line.split('\t').forEach(p => {
-                            const [k, v] = p.split('=');
-                            if (k && v) map[k] = v;
-                        });
-                        if (map['PIN']) userId = map['PIN'];
-                        if (map['Name']) name = map['Name'];
-                        if (map['Pri']) priv = map['Pri'];
-                        if (map['Passwd']) pass = map['Passwd'];
-                        if (map['Card']) card = map['Card'];
-                    }
-
-                    if (userId) {
-                        const payload = {
-                            device_sn: SN,
-                            user_id: userId,
-                            name: name || '', // Ensure empty string if undefined
-                            role: priv || 0,
-                            password: pass || '',
-                            card_number: card || ''
-                        };
-                        console.log(`[ZKTeco] Syncing User:`, payload);
-
-                        const resRequest = await fetch(SYNC_USER_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        const resText = await resRequest.text();
-                        console.log(`[ZKTeco] Sync Response (${resRequest.status}):`, resText);
-
-                        if (resRequest.ok) count++;
-                    }
+                    if (processUserLine(line, SN)) count++;
                 }
-                console.log(`[ZKTeco] Synced ${count} users`);
+                console.log(`[ZKTeco] Synced ${count} users from USERINFO table`);
             } catch (e) { console.error(e); }
         }
 
@@ -210,3 +182,61 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
+// Helper: Process a single USERINFO line
+// Returns true if sync was triggered, false otherwise
+async function processUserLine(line, SN) {
+    const SYNC_USER_URL = 'https://qssun.solar/api/iclock/sync_user.php';
+    let userId, name, priv, pass, card;
+
+    // 1. Try Standard Tab-Delimited: User_PIN\tName\tPrivilege\tPassword\tCard
+    [userId, name, priv, pass, card] = line.split('\t');
+
+    // 2. Try Key=Value Format (Found in OPERLOG or varying firmware)
+    if ((!name || !userId) && line.includes('=')) {
+        const map = {};
+        line.split('\t').forEach(p => {
+            const parts = p.split('=');
+            if (parts.length >= 2) {
+                const k = parts[0].trim();
+                const v = parts.slice(1).join('=').trim(); // Handle values with = inside?
+                if (k) map[k] = v;
+            }
+        });
+
+        // Map Keys (Handle Aliases found in logs)
+        userId = map['PIN'] || map['USER PIN'];
+        name = map['Name'];
+        priv = map['Pri'];
+        pass = map['Passwd'];
+        card = map['Card'];
+    }
+
+    // 3. Sync if we found a valid User ID
+    if (userId) {
+        const payload = {
+            device_sn: SN,
+            user_id: userId,
+            name: name || '',
+            role: priv || 0,
+            password: pass || '',
+            card_number: card || ''
+        };
+        console.log(`[ZKTeco] Parsed User from ${SN}:`, payload); // Debug Log
+
+        try {
+            const resRequest = await fetch(SYNC_USER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const resText = await resRequest.text();
+            console.log(`[ZKTeco] User Sync Response (${resRequest.status}):`, resText);
+            return resRequest.ok;
+        } catch (e) {
+            console.error(`[ZKTeco] User Sync Failed:`, e);
+            return false;
+        }
+    }
+    return false;
+}
