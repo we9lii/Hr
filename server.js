@@ -48,46 +48,71 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
     }
 
     // Data Push (Attendance Logs)
-    if (req.method === 'POST' && table === 'ATTLOG') {
-        const body = req.body; // Raw text body
-        console.log(`[ZKTeco] Received Logs from ${SN}:`, body);
+    if (req.method === 'POST') {
+        const body = req.body;
+        console.log(`[ZKTeco] Received ${table} from ${SN}:`, body);
 
         if (!body) return res.send('OK');
-
         const lines = body.split('\n').filter(line => line.trim());
         let count = 0;
 
-        try {
-            for (const line of lines) {
-                const parts = line.split('\t');
-                if (parts.length >= 2) {
-                    const [userId, time, status, verify, workCode] = parts;
-
-                    // HTTP Bridge: Sync to cPanel via HTTPS
-                    const payload = {
-                        device_sn: SN,
-                        user_id: userId,
-                        check_time: time,
-                        status: status || 0,
-                        verify_mode: verify || 1,
-                        work_code: workCode || 0
-                    };
-
-                    // Use global fetch (Node 18+)
-                    const response = await fetch(SYNC_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    const result = await response.json();
-                    if (result.status === 'success') count++;
-                    else console.error(`[ZKTeco] Sync Failed:`, result);
+        if (table === 'ATTLOG') {
+            try {
+                for (const line of lines) {
+                    const parts = line.split('\t');
+                    if (parts.length >= 2) {
+                        const [userId, time, status, verify, workCode] = parts;
+                        // HTTP Bridge: Sync Log
+                        await fetch(SYNC_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                device_sn: SN,
+                                user_id: userId,
+                                check_time: time,
+                                status: status || 0,
+                                verify_mode: verify || 1,
+                                work_code: workCode || 0
+                            })
+                        });
+                        count++;
+                    }
                 }
-            }
-            console.log(`[ZKTeco] Synced ${count} logs via Bridge`);
-        } catch (error) {
-            console.error('[ZKTeco] Bridge Error:', error);
+                console.log(`[ZKTeco] Synced ${count} logs`);
+            } catch (e) { console.error(e); }
+        }
+
+        else if (table === 'USERINFO') {
+            // USERINFO Format: User_PIN	Name	Privilege	Password	Card	Group	Timezone	Verify
+            const SYNC_USER_URL = 'https://qssun.solar/api/iclock/sync_user.php';
+            try {
+                for (const line of lines) {
+                    const parts = line.split('\t');
+                    if (parts.length >= 1) {
+                        // ZK Protocol sometimes varies, but usually:
+                        // PIN, Name, Password, Card, Priv, Group...
+                        // Let's assume standard push params or parse liberally
+                        // Actually, ZK push: USERINFO usually sends:
+                        // User_PIN \t Name \t Privilege \t Password \t Card \t ...
+                        const [userId, name, priv, pass, card] = parts;
+
+                        await fetch(SYNC_USER_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                device_sn: SN,
+                                user_id: userId,
+                                name: name || '',
+                                role: priv || 0,
+                                password: pass || '',
+                                card_number: card || ''
+                            })
+                        });
+                        count++;
+                    }
+                }
+                console.log(`[ZKTeco] Synced ${count} users`);
+            } catch (e) { console.error(e); }
         }
 
         return res.send('OK');

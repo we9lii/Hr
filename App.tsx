@@ -58,6 +58,12 @@ const App: React.FC = () => {
   const [logFilterType, setLogFilterType] = useState<string>('ALL');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
+  // Settings State
+  const [settings, setSettings] = useState({
+    workStartTime: '08:30:00',
+    workEndTime: '17:30:00'
+  });
+
   // Derived Filtered Logs
   const filteredLogs = logs.filter(log => {
     const matchesSearch = log.employeeName.toLowerCase().includes(logSearchTerm.toLowerCase()) ||
@@ -660,7 +666,7 @@ const App: React.FC = () => {
               <DeviceManager onDevicesUpdated={setDevices} />
             )}
 
-            {activeTab === 'biometric' && <LiveBiometricLogs />}
+            {activeTab === 'biometric' && <LiveBiometricLogs employees={employeesIndex} settings={settings} />}
 
             {activeTab === 'locations' && <LocationManager />}
 

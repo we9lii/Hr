@@ -20,7 +20,7 @@ try {
     $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 2. Fetch Devices Status
-    $devicesSql = "SELECT id, serial_number, alias as device_name, status, last_activity FROM devices";
+    $devicesSql = "SELECT id, serial_number, device_name, status, last_activity FROM devices";
     $stmtDev = $pdo->query($devicesSql);
     $devices = $stmtDev->fetchAll(PDO::FETCH_ASSOC);
 
@@ -35,10 +35,15 @@ try {
         }
     }
 
+    // 3. Fetch Biometric Users (Synced from Devices)
+    $stmtUsers = $pdo->query("SELECT user_id, name, role, device_sn FROM biometric_users");
+    $bioUsers = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+
     echo json_encode([
         "status" => "success",
         "logs" => $logs,
-        "devices" => $devices
+        "devices" => $devices,
+        "users" => $bioUsers
     ]);
 
 } catch (PDOException $e) {
