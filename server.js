@@ -164,6 +164,12 @@ app.all('/iclock/getrequest', async (req, res) => {
     res.send(`OK\nDate=${getRiyadhTime()}`); // Keep device time synced to Riyadh Time
 });
 
+// 3. Command Response (When device finishes a command)
+app.post('/iclock/devicecmd', express.text({ type: '*/*' }), (req, res) => {
+    const { SN } = req.query;
+    console.log(`[ZKTeco] Device Command Response from ${SN}:`, req.body);
+    res.send('OK');
+});
 
 // Apply Proxies (For other requests)
 app.use('/iclock/api', createProxyMiddleware(proxyConfig));
