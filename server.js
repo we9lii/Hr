@@ -44,7 +44,7 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
     // Handshake (First Connection)
     if (req.method === 'GET' && options === 'all') {
         console.log(`[ZKTeco] Handshake from ${SN}`);
-        return res.send(`GET OPTION FROM: ${SN}\nStamp=9999\nOpStamp=9999\nErrorDelay=60\nDelay=30\nTransTimes=00:00;14:05\nTransInterval=1\nTransFlag=1111000000\nRealtime=1\nEncrypt=0\nServerVer=3.4.1\nDate=${getRiyadhTime()}`);
+        return res.send(`GET OPTION FROM: ${SN}\nStamp=0\nOpStamp=0\nErrorDelay=60\nDelay=30\nTransTimes=00:00;14:05\nTransInterval=1\nTransFlag=1111000000\nRealtime=1\nEncrypt=0\nServerVer=3.4.1\nDate=${getRiyadhTime()}`);
     }
 
     // Data Push (Attendance Logs)
