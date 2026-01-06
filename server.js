@@ -92,7 +92,7 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
 
                     // If that failed to get a name, maybe it's Key=Value format?
                     if (!name && line.includes('=')) {
-                        const map: any = {};
+                        const map = {};
                         line.split('\t').forEach(p => {
                             const [k, v] = p.split('=');
                             if (k && v) map[k] = v;
