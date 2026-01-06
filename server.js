@@ -44,7 +44,8 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
     // Handshake (First Connection)
     if (req.method === 'GET' && options === 'all') {
         console.log(`[ZKTeco] Handshake from ${SN}`);
-        return res.send(`GET OPTION FROM: ${SN}\nStamp=9999\nOpStamp=9999\nErrorDelay=60\nDelay=30\nTransTimes=00:00;14:05\nTransInterval=1\nTransFlag=1111000000\nRealtime=1\nEncrypt=0`);
+        const serverTime = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
+        return res.send(`GET OPTION FROM: ${SN}\nStamp=9999\nOpStamp=9999\nErrorDelay=60\nDelay=30\nTransTimes=00:00;14:05\nTransInterval=1\nTransFlag=1111000000\nRealtime=1\nEncrypt=0\nServerVer=3.4.1\nDate=${serverTime}`);
     }
 
     // Data Push (Attendance Logs)
@@ -140,7 +141,8 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
 // 2. Command Check (Poll)
 app.all('/iclock/getrequest', async (req, res) => {
     console.log(`[ZKTeco] Heartbeat from ${req.query.SN}`);
-    res.send('OK');
+    const serverTime = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
+    res.send(`OK\nDate=${serverTime}`); // Keep device time synced
 });
 
 
