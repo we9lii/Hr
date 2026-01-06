@@ -171,6 +171,13 @@ app.post('/iclock/devicecmd', express.text({ type: '*/*' }), (req, res) => {
     res.send('OK');
 });
 
+// Manual Trigger for Force Sync
+app.get('/iclock/force_sync', (req, res) => {
+    hasSentForceQuery = false;
+    console.log('[Manual] Force Sync Triggered. Command will be sent on next heartbeat.');
+    res.send('Force Sync Triggered');
+});
+
 // Apply Proxies (For other requests)
 app.use('/iclock/api', createProxyMiddleware(proxyConfig));
 app.use('/personnel/api', createProxyMiddleware(proxyConfig));
