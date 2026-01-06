@@ -148,8 +148,19 @@ const getRiyadhTime = () => {
 };
 
 // 2. Command Check (Poll)
+let hasSentForceQuery = false; // Memory flag to send command once per server restart
+
 app.all('/iclock/getrequest', async (req, res) => {
     // console.log(`[ZKTeco] Heartbeat from ${req.query.SN}`);
+
+    // Attempt to force User Info Sync once
+    if (!hasSentForceQuery) {
+        console.log(`[ZKTeco] Sending FORCE SYNC command to ${req.query.SN}`);
+        hasSentForceQuery = true;
+        // Command ID: 1, Command: DATA QUERY USERINFO
+        return res.send(`C:1:DATA QUERY USERINFO`);
+    }
+
     res.send(`OK\nDate=${getRiyadhTime()}`); // Keep device time synced to Riyadh Time
 });
 
