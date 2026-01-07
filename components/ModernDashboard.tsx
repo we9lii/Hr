@@ -38,16 +38,16 @@ const StatCard: React.FC<{
         whileHover={{ y: -5 }}
         whileTap={{ scale: 0.98 }}
         onClick={onClick}
-        className={`relative overflow-hidden rounded-3xl p-6 text-right group w-full liquid-glass transition-all hover:bg-slate-50 dark:hover:bg-white/10`}
+        className={`relative overflow-hidden rounded-3xl p-6 text-right group w-full liquid-glass transition-all hover:bg-white/10`}
     >
-        <div className="relative z-10 flex flex-col items-start text-slate-800 dark:text-white">
+        <div className="relative z-10 flex flex-col items-start text-white">
             <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-blue-100 dark:bg-white/20 rounded-xl text-blue-600 dark:text-white/80">
+                <div className="p-2 bg-white/20 rounded-xl text-white/80">
                     {icon}
                 </div>
-                <span className="text-sm font-medium text-slate-500 dark:text-white/90">{title}</span>
+                <span className="text-sm font-medium text-white/90">{title}</span>
             </div>
-            <span className="text-4xl font-extrabold tracking-tight text-slate-800 dark:text-white">{value}</span>
+            <span className="text-4xl font-extrabold tracking-tight text-white">{value}</span>
         </div>
     </motion.button>
 );
@@ -105,10 +105,10 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
             {/* Header & Refresh */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
                 <div>
-                    <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
+                    <h1 className="text-2xl font-bold text-white bg-clip-text">
                         لوحة المراقبة والتحليلات
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+                    <p className="text-slate-400 text-xs mt-1">
                         آخر تحديث: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString('ar-SA') : '--'}
                     </p>
                 </div>
@@ -153,10 +153,10 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                 {/* Attendance Breakdown Chart */}
-                <motion.div variants={itemVariants} className="liquid-glass p-6 rounded-3xl relative overflow-hidden">
+                <motion.div variants={itemVariants} className="liquid-glass p-6 rounded-3xl relative overflow-hidden bg-slate-900/50 border border-slate-800/50">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-red-400" />
-                    <h3 className="font-bold text-lg text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-slate-500 dark:text-white/70" />
+                    <h3 className="font-bold text-lg text-white mb-6 flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-slate-400" />
                         تحليل الحضور
                     </h3>
                     <div className="h-[250px] w-full relative">
@@ -185,20 +185,21 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                 </Pie>
                                 <RechartsTooltip
                                     contentStyle={{
-                                        backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
-                                        borderColor: isDarkMode ? '#334155' : '#e2e8f0',
-                                        color: isDarkMode ? '#fff' : '#0f172a',
-                                        borderRadius: '12px'
+                                        backgroundColor: '#1e293b',
+                                        borderColor: '#334155',
+                                        color: '#fff',
+                                        borderRadius: '12px',
+                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
                                     }}
-                                    itemStyle={{ color: isDarkMode ? '#fff' : '#0f172a' }}
+                                    itemStyle={{ color: '#fff' }}
                                 />
                                 <Legend verticalAlign="bottom" height={36} iconType="circle" />
                             </PieChart>
                         </ResponsiveContainer>
                         {/* Center Text Overlay */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
-                            <span className="text-3xl font-bold text-slate-800 dark:text-white">{stats?.presentToday || 0}</span>
-                            <span className="text-xs text-slate-500 dark:text-white/70">حاضر</span>
+                            <span className="text-3xl font-bold text-white">{stats?.presentToday || 0}</span>
+                            <span className="text-xs text-slate-400">حاضر</span>
                         </div>
                     </div>
                 </motion.div>
@@ -206,34 +207,34 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
 
 
                 {/* Recent Activity Table */}
-                <motion.div variants={itemVariants} className="liquid-glass p-3 md:p-6 rounded-3xl flex flex-col relative overflow-hidden">
+                <motion.div variants={itemVariants} className="liquid-glass p-3 md:p-6 rounded-3xl flex flex-col relative overflow-hidden bg-slate-900/50 border border-slate-800/50">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-amber-400 to-red-400" />
                     <div className="flex items-center justify-between mb-4 md:mb-6">
-                        <h3 className="font-bold text-base md:text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                            <Clock className="w-4 h-4 md:w-5 md:h-5 text-slate-500 dark:text-white/70" />
+                        <h3 className="font-bold text-base md:text-lg text-white flex items-center gap-2">
+                            <Clock className="w-4 h-4 md:w-5 md:h-5 text-slate-400" />
                             آخر النشاطات
                         </h3>
                     </div>
 
                     <div className="overflow-x-auto">
                         {logs.length === 0 ? (
-                            <div className="text-center text-slate-300 text-sm py-8">لا توجد نشاطات حديثة</div>
+                            <div className="text-center text-slate-400 text-sm py-8">لا توجد نشاطات حديثة</div>
                         ) : (
                             <table className="w-full text-right border-collapse">
-                                <thead className="border-b border-slate-200 dark:border-white/10">
-                                    <tr className="bg-slate-50/50 dark:bg-white/5 text-slate-500 dark:text-slate-300 text-[10px] md:text-xs">
-                                        <th className="p-2 md:p-3">الموظف</th>
+                                <thead className="border-b border-slate-700">
+                                    <tr className="bg-slate-800/50 text-slate-400 text-[10px] md:text-xs">
+                                        <th className="p-2 md:p-3 rounded-tl-lg rounded-bl-lg">الموظف</th>
                                         <th className="p-2 md:p-3">الجهاز</th>
                                         <th className="p-2 md:p-3">الوقت</th>
-                                        <th className="p-2 md:p-3">النوع</th>
+                                        <th className="p-2 md:p-3 rounded-tr-lg rounded-br-lg">النوع</th>
                                     </tr>
                                 </thead>
                                 <tbody className="text-sm">
                                     {pageLogs.map((log, i) => (
-                                        <tr key={log.id || i} className="hover:bg-slate-50 dark:hover:bg-white/5 border-b border-slate-200 dark:border-white/10 transition-colors">
-                                            <td className="p-2 md:p-3 font-bold text-slate-800 dark:text-white text-[10px] md:text-sm">{log.employeeName}</td>
+                                        <tr key={log.id || i} className="hover:bg-slate-800/30 border-b border-slate-800 transition-colors">
+                                            <td className="p-2 md:p-3 font-bold text-white text-[10px] md:text-sm">{log.employeeName}</td>
                                             <td className="p-2 md:p-5">
-                                                <span className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 truncate max-w-[100px] md:max-w-[200px] block" title={log.location?.address}>
+                                                <span className="text-[10px] md:text-xs text-slate-400 truncate max-w-[100px] md:max-w-[200px] block" title={log.location?.address}>
                                                     {log.location?.address || log.deviceAlias || (
                                                         log.deviceSn === 'Web' ? 'تطبيق الجوال' : (log.deviceSn || '-')
                                                     )}
@@ -253,28 +254,28 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="p-2 md:p-3 text-slate-600 dark:text-slate-300 font-mono text-[10px] md:text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
+                                            <td className="p-2 md:p-3 text-slate-400 font-mono text-[10px] md:text-xs" dir="ltr">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</td>
                                             <td className="p-2 md:p-3">
                                                 {(() => {
                                                     let label = 'غير معروف';
-                                                    let color = 'bg-slate-500/20 text-slate-300';
+                                                    let color = 'bg-slate-500/20 text-slate-300 border border-slate-600/30';
 
                                                     switch (log.type) {
                                                         case 'CHECK_IN':
                                                             label = 'حضور';
-                                                            color = 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                                                            color = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
                                                             break;
                                                         case 'CHECK_OUT':
                                                             label = 'انصراف';
-                                                            color = 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
+                                                            color = 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
                                                             break;
                                                         case 'BREAK_IN':
                                                             label = 'عودة'; // Shortened for mobile
-                                                            color = 'bg-blue-500/20 text-blue-300 border border-blue-500/30';
+                                                            color = 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
                                                             break;
                                                         case 'BREAK_OUT':
                                                             label = 'استراحة'; // Shortened for mobile
-                                                            color = 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
+                                                            color = 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
                                                             break;
                                                     }
                                                     return (
@@ -294,12 +295,12 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                 <span>صفحة {page} من {totalPages}</span>
                                 <div className="flex items-center gap-2">
                                     <button
-                                        className="px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50"
+                                        className="px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 disabled:opacity-50 text-slate-300"
                                         onClick={() => setPage(p => Math.max(1, p - 1))}
                                         disabled={page === 1}
                                     >السابق</button>
                                     <button
-                                        className="px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50"
+                                        className="px-2 py-1 rounded-lg border border-slate-700 hover:bg-slate-800 disabled:opacity-50 text-slate-300"
                                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                                         disabled={page === totalPages}
                                     >التالي</button>

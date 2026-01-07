@@ -463,40 +463,40 @@ const App: React.FC = () => {
               <div className="space-y-6 relative z-10 animate-fade-in pb-20">
 
                 {/* Header & Controls */}
-                <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl p-6 rounded-3xl border border-white/20 shadow-2xl relative overflow-hidden">
+                <div className="bg-slate-900/80 backdrop-blur-2xl p-6 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 opacity-80" />
 
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                     <div>
-                      <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                        <div className="p-3 bg-emerald-500/10 rounded-2xl backdrop-blur-sm border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                      <h2 className="text-2xl font-black text-white flex items-center gap-3">
+                        <div className="p-3 bg-emerald-500/10 rounded-2xl backdrop-blur-sm border border-emerald-500/20 text-emerald-400">
                           <CheckCircle size={24} />
                         </div>
                         سجل الحركات الكامل
                       </h2>
-                      <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-2 mr-14">
+                      <p className="text-slate-400 text-sm font-medium mt-2 mr-14">
                         عرض وتصفية جميع حركات الدخول والخروج المسجلة في النظام
                       </p>
                     </div>
-                    <div className="bg-emerald-50 dark:bg-emerald-900/20 px-4 py-2 rounded-xl border border-emerald-100 dark:border-emerald-500/20 flex items-center gap-2">
+                    <div className="bg-emerald-900/20 px-4 py-2 rounded-xl border border-emerald-500/20 flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">تم التحديث: {lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('ar-SA') : '-'}</span>
+                      <span className="text-xs font-bold text-emerald-400">تم التحديث: {lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('ar-SA') : '-'}</span>
                     </div>
                   </div>
 
                   {/* Filters Toolbar */}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-slate-50/50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
 
                     {/* Search */}
                     <div className="md:col-span-4">
-                      <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">بحث عن موظف</label>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">بحث عن موظف</label>
                       <div className="relative">
                         <input
                           type="text"
                           placeholder="اسم الموظف أو الرقم الوظيفي..."
                           value={logSearchTerm}
                           onChange={(e) => setLogSearchTerm(e.target.value)}
-                          className="w-full pl-3 pr-10 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium transition-all shadow-sm"
+                          className="w-full pl-3 pr-10 py-2.5 border border-slate-700 bg-slate-900 text-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium transition-all shadow-sm"
                         />
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
                           <UsersIcon size={16} />
@@ -507,32 +507,32 @@ const App: React.FC = () => {
                     {/* Date Range */}
                     <div className="md:col-span-4 grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">من</label>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">من</label>
                         <input
                           type="date"
                           value={logStartDate}
                           onChange={(e) => setLogStartDate(e.target.value)}
-                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium transition-all shadow-sm"
+                          className="w-full px-3 py-2.5 border border-slate-700 bg-slate-900 text-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium transition-all shadow-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">إلى</label>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">إلى</label>
                         <input
                           type="date"
                           value={logEndDate}
                           onChange={(e) => setLogEndDate(e.target.value)}
-                          className="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium transition-all shadow-sm"
+                          className="w-full px-3 py-2.5 border border-slate-700 bg-slate-900 text-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-sm font-medium transition-all shadow-sm"
                         />
                       </div>
                     </div>
 
                     {/* Type Filter */}
                     <div className="md:col-span-4">
-                      <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">نوع الحركة</label>
-                      <div className="flex bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <button onClick={() => setLogFilterType('ALL')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${logFilterType === 'ALL' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-400'}`}>الكل</button>
-                        <button onClick={() => setLogFilterType('CHECK_IN')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${logFilterType === 'CHECK_IN' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>دخول</button>
-                        <button onClick={() => setLogFilterType('CHECK_OUT')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${logFilterType === 'CHECK_OUT' ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>خروج</button>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">نوع الحركة</label>
+                      <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-700 shadow-sm">
+                        <button onClick={() => setLogFilterType('ALL')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${logFilterType === 'ALL' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>الكل</button>
+                        <button onClick={() => setLogFilterType('CHECK_IN')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${logFilterType === 'CHECK_IN' ? 'bg-emerald-900/30 text-emerald-400' : 'text-slate-400'}`}>دخول</button>
+                        <button onClick={() => setLogFilterType('CHECK_OUT')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${logFilterType === 'CHECK_OUT' ? 'bg-rose-900/30 text-rose-400' : 'text-slate-400'}`}>خروج</button>
                       </div>
                     </div>
 
@@ -540,28 +540,28 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Main Table */}
-                <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-3xl rounded-3xl border border-white/20 dark:border-slate-800 shadow-xl overflow-hidden min-h-[500px]">
+                <div className="bg-slate-900/70 backdrop-blur-3xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden min-h-[500px]">
                   {dataError ? (
                     <div className="flex flex-col items-center justify-center h-[400px] text-center px-4">
-                      <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-full text-red-500 mb-4 animate-bounce">
+                      <div className="p-4 bg-red-900/10 rounded-full text-red-500 mb-4 animate-bounce">
                         <AlertTriangle size={32} />
                       </div>
-                      <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">حدث خطأ في تحميل البيانات</h3>
+                      <h3 className="text-xl font-bold text-white mb-2">حدث خطأ في تحميل البيانات</h3>
                       <p className="text-slate-500">{dataError}</p>
                     </div>
                   ) : filteredLogs.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-[400px] text-center px-4">
-                      <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-300 dark:text-slate-600 mb-4">
+                      <div className="p-6 bg-slate-800 rounded-full text-slate-600 mb-4">
                         <WifiOff size={48} strokeWidth={1.5} />
                       </div>
-                      <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-2">لا توجد سجلات مطابقة</h3>
+                      <h3 className="text-lg font-bold text-slate-300 mb-2">لا توجد سجلات مطابقة</h3>
                       <p className="text-slate-400 text-sm max-w-sm">لم يتم العثور على أي حركات تطابق معايير البحث او الفلترة الحالية. جرب تغيير التاريخ او البحث.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-right border-collapse">
                         <thead>
-                          <tr className="bg-slate-50/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-[11px] border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider backdrop-blur-sm sticky top-0 z-10">
+                          <tr className="bg-slate-800/80 text-slate-400 text-[11px] border-b border-slate-700 uppercase tracking-wider backdrop-blur-sm sticky top-0 z-10">
                             <th className="p-2 md:p-5 font-bold">الموظف</th>
                             <th className="p-2 md:p-5 font-bold">التاريخ والوقت</th>
                             <th className="p-2 md:p-5 font-bold">النوع</th>
@@ -570,55 +570,55 @@ const App: React.FC = () => {
                             <th className="p-2 md:p-5 font-bold">الموقع / الجهاز</th>
                           </tr>
                         </thead>
-                        <tbody className="text-sm divide-y divide-slate-100 dark:divide-slate-800/50">
+                        <tbody className="text-sm divide-y divide-slate-800/50">
                           {filteredLogs.slice(0, 100).map((log) => (
                             <tr
                               key={log.id}
                               onClick={() => setSelectedEmployeeId(log.employeeId)}
-                              className="group hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition-colors duration-200 cursor-pointer"
+                              className="group hover:bg-emerald-900/10 transition-colors duration-200 cursor-pointer"
                             >
                               <td className="p-2 md:p-5">
                                 <div className="flex items-center gap-2 md:gap-4">
-                                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-xs md:text-sm font-black text-slate-400 dark:text-slate-400 shadow-inner group-hover:scale-110 transition-transform">
+                                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center text-xs md:text-sm font-black text-slate-400 shadow-inner group-hover:scale-110 transition-transform">
                                     {log.employeeName.charAt(0)}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="font-bold text-slate-800 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors text-xs md:text-base truncate max-w-[80px] md:max-w-none">{log.employeeName}</div>
-                                    <div className="text-[9px] md:text-xs text-slate-400 font-mono mt-0.5 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-fit hidden md:block">{log.employeeId}</div>
+                                    <div className="font-bold text-white group-hover:text-emerald-400 transition-colors text-xs md:text-base truncate max-w-[80px] md:max-w-none">{log.employeeName}</div>
+                                    <div className="text-[9px] md:text-xs text-slate-400 font-mono mt-0.5 bg-slate-800 px-1.5 py-0.5 rounded w-fit hidden md:block">{log.employeeId}</div>
                                   </div>
                                 </div>
                               </td>
-                              <td className="p-2 md:p-5 text-slate-600 dark:text-slate-400" dir="ltr">
+                              <td className="p-2 md:p-5 text-slate-400" dir="ltr">
                                 <div className="flex flex-col items-end">
-                                  <span className="font-mono text-[10px] md:text-sm font-bold text-slate-800 dark:text-white">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</span>
+                                  <span className="font-mono text-[10px] md:text-sm font-bold text-white">{new Date(log.timestamp).toLocaleTimeString('ar-SA-u-ca-gregory')}</span>
                                   <span className="text-[9px] md:text-[11px] text-slate-400 mt-0 md:mt-0.5">{new Date(log.timestamp).toLocaleDateString('ar-SA-u-ca-gregory')}</span>
                                 </div>
                               </td>
                               <td className="p-2 md:p-5">
                                 {(() => {
                                   let label = 'غير معروف';
-                                  let colorClass = 'bg-slate-50/50 dark:bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-500/20';
+                                  let colorClass = 'bg-slate-500/10 text-slate-400 border-slate-500/20';
                                   let dotClass = 'bg-slate-500';
 
                                   switch (log.type) {
                                     case 'CHECK_IN':
                                       label = 'دخول';
-                                      colorClass = 'bg-emerald-50/50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20';
+                                      colorClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
                                       dotClass = 'bg-emerald-500';
                                       break;
                                     case 'CHECK_OUT':
                                       label = 'خروج';
-                                      colorClass = 'bg-rose-50/50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20';
+                                      colorClass = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
                                       dotClass = 'bg-rose-500';
                                       break;
                                     case 'BREAK_IN':
                                       label = 'عودة'; // Shortened
-                                      colorClass = 'bg-blue-50/50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20';
+                                      colorClass = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
                                       dotClass = 'bg-blue-500';
                                       break;
                                     case 'BREAK_OUT':
                                       label = 'استراحة'; // Shortened
-                                      colorClass = 'bg-amber-50/50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20';
+                                      colorClass = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
                                       dotClass = 'bg-amber-500';
                                       break;
                                   }
@@ -632,26 +632,26 @@ const App: React.FC = () => {
                                 })()}
                               </td>
                               <td className="p-2 md:p-5 hidden md:table-cell">
-                                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                                <span className="text-xs font-semibold text-slate-400 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700">
                                   {log.method}
                                 </span>
                               </td>
                               <td className="p-2 md:p-5 hidden md:table-cell">
                                 {log.status === 'LATE' && (
-                                  <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg border border-amber-100 dark:border-amber-900/30 w-fit">
+                                  <div className="flex items-center gap-1.5 text-amber-400 bg-amber-900/20 px-3 py-1.5 rounded-lg border border-amber-900/30 w-fit">
                                     <AlertTriangle size={14} />
                                     <span className="text-xs font-bold">متأخر</span>
                                   </div>
                                 )}
                                 {log.status === 'ON_TIME' && (
-                                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30 w-fit">
+                                  <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-900/20 px-3 py-1.5 rounded-lg border border-emerald-900/30 w-fit">
                                     <CheckCircle size={14} />
                                     <span className="text-xs font-bold">منتظم</span>
                                   </div>
                                 )}
                               </td>
                               <td className="p-2 md:p-5">
-                                <span className="text-[9px] md:text-xs text-slate-500 dark:text-slate-400 truncate max-w-[80px] md:max-w-[200px] block" title={log.location?.address}>
+                                <span className="text-[9px] md:text-xs text-slate-400 truncate max-w-[80px] md:max-w-[200px] block" title={log.location?.address}>
                                   {log.deviceAlias || (log.deviceSn ? (log.deviceSn === 'Web' ? 'الجوال' : `${log.deviceSn}`) : (log.location ? (log.location.address || `${log.location.lat.toFixed(4)}...`) : '-'))}
                                 </span>
                               </td>
@@ -660,7 +660,7 @@ const App: React.FC = () => {
                         </tbody>
                       </table>
                       {filteredLogs.length > 100 && (
-                        <div className="p-4 text-center text-xs text-slate-400 border-t border-slate-200 dark:border-slate-800">
+                        <div className="p-4 text-center text-xs text-slate-400 border-t border-slate-800">
                           يتم عرض آخر 100 نتيجة فقط من أصل {filteredLogs.length} لتحسين الأداء
                         </div>
                       )}
