@@ -57,15 +57,16 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     type: 'DETAILED', // 'DETAILED' | 'SUMMARY'
     format: 'XLS',    // 'XLS' | 'CSV'
     start: new Date().toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
+    end: new Date().toISOString().split('T')[0],
+    employeeId: ''
   });
 
-  // Load All Employees for Manual Entry
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
+
+  // Load All Employees on Mount
   useEffect(() => {
-    if (manualModalOpen && allEmployees.length === 0) {
-      fetchAllEmployees().then(setAllEmployees).catch(e => console.error("Failed to load employees", e));
-    }
-  }, [manualModalOpen]);
+    fetchAllEmployees().then(setAllEmployees).catch(e => console.error("Failed to load employees", e));
+  }, []);
 
   // Handle Manual Submit
   const handleManualSubmit = async () => {
@@ -117,8 +118,8 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
   // Update export config when filtered range changes
   useEffect(() => {
-    setExportConfig(prev => ({ ...prev, start: startDate, end: endDate }));
-  }, [startDate, endDate]);
+    setExportConfig(prev => ({ ...prev, start: startDate, end: endDate, employeeId: selectedEmployee }));
+  }, [startDate, endDate, selectedEmployee]);
 
   // Helper to calculate delay based on device shifts or default
   // Optimized to minimize Date object creation
@@ -180,6 +181,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       const t = Date.parse(log.timestamp);
       if (t < startTime || t > endTime) return false;
       if (deviceSn && log.deviceSn !== deviceSn) return false;
+      if (selectedEmployee && log.employeeId !== selectedEmployee) return false;
 
       if (reportType === 'LATE') {
         // calculateDelay now optimized
@@ -219,7 +221,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   useEffect(() => {
     setReportPage(1);
     setSummaryPage(1);
-  }, [reportType, deviceSn, startDate, endDate]);
+  }, [reportType, deviceSn, startDate, endDate, selectedEmployee]);
 
   const reportSorted = useMemo(() => {
     return [...filteredData].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -273,6 +275,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       const t = Date.parse(log.timestamp);
       if (t < startTime || t > endTime) return;
       if (deviceSn && log.deviceSn !== deviceSn) return;
+      if (selectedEmployee && log.employeeId !== selectedEmployee) return;
 
       const d = new Date(t);
       const dayKey = d.toDateString();
@@ -348,7 +351,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     });
 
     return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [logs, startDate, endDate, deviceSn, rangeLogs]);
+  }, [logs, startDate, endDate, deviceSn, rangeLogs, selectedEmployee]);
 
   const lateSummary = useMemo(() => {
     // We already have dailySummaryData which seems correct and robust.
@@ -418,15 +421,26 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   };
 
   const downloadCSV = (headers: string[], rows: string[][], fileName: string) => {
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    // Robust logic: Filter out nulls/empty lines manually
+    const lines: string[] = [];
+    if (headers && headers.length > 0) {
+      lines.push(headers.join(';'));
+    }
+
+    rows.forEach(r => {
+      if (Array.isArray(r)) {
+        lines.push(r.map(c => `"${c || ''}"`).join(';'));
+      }
+    });
+
+    const csvContent = "\uFEFF" + lines.join('\r\n');
     downloadFile(csvContent, fileName, 'text/csv');
   };
 
   const handleExportSubmit = async (override?: any) => {
-    const { type, format, start, end } = { ...exportConfig, ...override };
+    const { type, format, start, end, employeeId } = { ...exportConfig, ...override };
 
     // 1. Fetch Data (Ensure Local Full Day Range)
-    // start/end are "YYYY-MM-DD"
     const [sy, sm, sd] = start.split('-').map(Number);
     const [ey, em, ed] = end.split('-').map(Number);
 
@@ -440,16 +454,18 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       dataForExport = logs;
     }
 
-    // Filter by Device/Date
+    // Filter by Device/Date/Employee
     const filteredRaw = dataForExport.filter(log => {
       const logDate = new Date(log.timestamp);
       if (logDate < s || logDate > e) return false;
       if (deviceSn && log.deviceSn !== deviceSn) return false;
+      // Note: We filter logs by employee here, but we will "fill gaps" later for the selected employee(s)
+      if (employeeId && log.employeeId !== employeeId) return false;
       return true;
     });
 
     // 2. Process Data into Daily Records (Base for both reports)
-    // Map key: "EmpID__DateString"
+    // Map key: "EmpID__YYYY-MM-DD"
     const dailyMap = new Map<string, {
       empId: string;
       empName: string;
@@ -458,25 +474,31 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       firstIn: Date | null;
       lastOut: Date | null;
       dailyDelay: number;
+      isAbsent: boolean;
     }>();
 
     filteredRaw.forEach(log => {
       const d = new Date(log.timestamp);
-      const key = `${log.employeeId}__${d.toDateString()} `;
+      const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD (Local approx if using local time logs) -> Actually Timestamp is ISO.
+      // Fix: Use local date string to avoid timezone shifts on day boundaries
+      const localDateStr = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+
+      const key = `${log.employeeId}__${localDateStr}`;
 
       let record = dailyMap.get(key);
       if (!record) {
         record = {
           empId: log.employeeId,
           empName: log.employeeName,
-          date: d.toISOString().split('T')[0],
+          date: localDateStr,
           displayDate: d.toLocaleDateString('ar-SA'),
           firstIn: null,
           lastOut: null,
-          dailyDelay: 0
+          dailyDelay: 0,
+          isAbsent: false
         };
         dailyMap.set(key, record);
-      } // No 'logs' array needed for export, saving memory
+      }
 
       if (log.type === 'CHECK_IN') {
         if (!record.firstIn || d < record.firstIn) record.firstIn = d;
@@ -486,15 +508,62 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       }
     });
 
+    // 2.5 FILL MISSING DAYS (Absence Logic)
+    // Iterate from Start Date to End Date
+    const currentDate = new Date(s);
+    const endDateObj = new Date(e);
+
+    // Determine list of employees to check
+    // If specific employee selected, only check them. Else, check ALL employees known to system.
+    let targetEmployees = [];
+    if (employeeId) {
+      const found = allEmployees.find(e => e.code === employeeId);
+      if (found) targetEmployees.push(found);
+    } else {
+      targetEmployees = allEmployees;
+    }
+
+    if (targetEmployees.length > 0) {
+      while (currentDate <= endDateObj) {
+        // Skip Fridays (5) and Saturdays (6) if weekend? User didn't specify, but usually absences are working days.
+        // For now, I'll list all days, or maybe skip Friday? 
+        // User request: "عند غياب الموظف ليوم يتم حذف حقل هذا اليوم وهذا يبدو لي غلط" -> Implies they want to see it.
+        const dayOfWeek = currentDate.getDay(); // 0=Sun, 1=Mon... 5=Fri, 6=Sat
+        // Assuming Friday is weekend in Saudi, maybe Saturday too.
+        // Let's include everything for now to be safe, or maybe skip Friday only?
+        // Safe bet: Include all days, highlight Absence.
+
+        const dStr = currentDate.toLocaleDateString('en-CA');
+        const dDisplay = currentDate.toLocaleDateString('ar-SA');
+
+        if (dayOfWeek !== 5) { // Skip Friday Only (Common in SA)
+          targetEmployees.forEach(emp => {
+            const key = `${emp.code}__${dStr}`;
+            if (!dailyMap.has(key)) {
+              dailyMap.set(key, {
+                empId: emp.code,
+                empName: emp.name,
+                date: dStr,
+                displayDate: dDisplay,
+                firstIn: null,
+                lastOut: null,
+                dailyDelay: 0,
+                isAbsent: true // Mark as absent
+              });
+            }
+          });
+        }
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    }
+
     // 3. Generate Output Helper
-    // 3. Generate Output Helper
-    // Excel requires INLINE styles for best compatibility
     const tableStyle = `width: 100%; border-collapse: collapse; font-family: 'Tajawal', sans-serif; font-size: 10pt; direction: rtl;`;
     const thStyle = `background-color: #2c3e50; color: white; padding: 10px; text-align: center; font-weight: bold; border: 1px solid #ddd;`;
     const tdStyle = `padding: 8px; border: 1px solid #ddd; text-align: center; color: #333;`;
     const missingStyle = `background-color: #fca5a5; color: #7f1d1d; font-weight: bold;`;
 
-    // Helper for English numeric duration (HH:mm)
     const formatDurationEn = (mins: number) => {
       const h = Math.floor(mins / 60);
       const m = mins % 60;
@@ -521,13 +590,14 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
           th { background-color: #f1f5f9; color: #334155; padding: 12px; font-weight: bold; border: 1px solid #e2e8f0; text-align: right; }
           td { padding: 10px; border: 1px solid #e2e8f0; color: #334155; text-align: right; }
           .status-late { color: #dc2626; font-weight: bold; }
-          .status-missing { background-color: #fef2f2; color: #dc2626; }
+          .status-missing { background-color: #fef2f2; color: #dc2626; } 
+          .status-absent { background-color: #fee2e2; color: #b91c1c; font-weight: bold; }
           .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #94a3b8; }
         </style>
     </head>
     <body>
         <div class="header">
-           <div class="title">${title}</div>
+           <div class="title">${title} ${employeeId ? ` - ${targetEmployees[0]?.name}` : ''}</div>
            <div class="meta">الفترة: من ${start} إلى ${end}</div>
            <div class="meta" style="margin-top:5px">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div>
         </div>
@@ -542,7 +612,8 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
     // Shared logic to prepare rows
     const prepareRows = () => {
-      const rows = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+      // Sort: Date DESC, Name ASC
+      const rows = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date) || a.empName.localeCompare(b.empName));
       const header = `<tr>
            <th>الموظف</th>
            <th>التاريخ</th>
@@ -553,21 +624,36 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
          </tr>`;
 
       const body = rows.map(r => {
+        if (r.isAbsent) {
+          return `<tr class="row-absent">
+                <td>${r.empName}</td>
+                <td style="direction:ltr; text-align:right">${r.displayDate}</td>
+                <td colspan="2" style="text-align:center">-</td>
+                <td style="text-align:center">-</td>
+                <td><span class="tag tag-absent">لم يحضر</span></td>
+            </tr>`;
+        }
+
         const isMissingOut = r.firstIn && !r.lastOut;
         const timeIn = r.firstIn ? r.firstIn.toLocaleTimeString('en-US', { hour12: false }) : '--';
         const timeOut = r.lastOut ? r.lastOut.toLocaleTimeString('en-US', { hour12: false }) : '--';
-        const statusClass = r.dailyDelay > 0 ? 'status-late' : '';
-        const rowClass = isMissingOut ? 'status-missing' : '';
-        const statusText = isMissingOut ? 'لم يسجل خروج' : (r.dailyDelay > 0 ? 'تأخير' : 'مكتمل');
-        const delayText = r.dailyDelay > 0 ? formatDurationEn(r.dailyDelay) : '-';
+
+        let rowClass = '';
+        if (isMissingOut) rowClass = 'row-missing';
+        // if (r.dailyDelay > 0) rowClass = 'row-late'; // Optional: highlight late rows?
+
+        const statusLabel = isMissingOut ? '<span class="tag" style="background:#fff7ed; color:#c2410c">لم يسجل خروج</span>' :
+          (r.dailyDelay > 0 ? `<span class="tag tag-late">تأخير ${formatDurationEn(r.dailyDelay)}</span>` : '<span class="tag tag-ok">مكتمل</span>');
+
+        const delayText = r.dailyDelay > 0 ? `<span style="color:#dc2626; font-weight:bold">${formatDurationEn(r.dailyDelay)}</span>` : '-';
 
         return `<tr class="${rowClass}">
-                <td>${r.empName}</td>
+                <td style="font-weight:700">${r.empName}</td>
                 <td style="direction:ltr; text-align:right">${r.displayDate}</td>
-                <td style="direction:ltr; text-align:right">${timeIn}</td>
-                <td style="direction:ltr; text-align:right">${timeOut}</td>
-                <td class="${statusClass}" style="direction:ltr; text-align:right">${delayText}</td>
-                <td>${statusText}</td>
+                <td style="direction:ltr; text-align:right; font-family:monospace">${timeIn}</td>
+                <td style="direction:ltr; text-align:right; font-family:monospace">${timeOut}</td>
+                <td style="direction:ltr; text-align:right">${delayText}</td>
+                <td>${statusLabel}</td>
             </tr>`;
       }).join('');
 
@@ -575,13 +661,18 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     };
 
     const prepareSummaryRows = () => {
-      const empMap = new Map<string, { name: string, totalDelay: number, daysLate: number, missingOutCount: number }>();
+      const empMap = new Map<string, { name: string, totalDelay: number, daysLate: number, missingOutCount: number, absentCount: number }>();
       dailyMap.forEach(day => {
         let e = empMap.get(day.empId);
-        if (!e) { e = { name: day.empName, totalDelay: 0, daysLate: 0, missingOutCount: 0 }; empMap.set(day.empId, e); }
-        e.totalDelay += day.dailyDelay;
-        if (day.dailyDelay > 0) e.daysLate++;
-        if (day.firstIn && !day.lastOut) e.missingOutCount++;
+        if (!e) { e = { name: day.empName, totalDelay: 0, daysLate: 0, missingOutCount: 0, absentCount: 0 }; empMap.set(day.empId, e); }
+
+        if (day.isAbsent) {
+          e.absentCount++;
+        } else {
+          e.totalDelay += day.dailyDelay;
+          if (day.dailyDelay > 0) e.daysLate++;
+          if (day.firstIn && !day.lastOut) e.missingOutCount++;
+        }
       });
       const rows = Array.from(empMap.entries()).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.totalDelay - a.totalDelay);
 
@@ -589,6 +680,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
            <th>الموظف</th>
            <th>ساعات التأخير</th>
            <th>أيام التأخير</th>
+           <th>أيام الغياب</th>
            <th>حماية (لم يسجل خروج)</th>
          </tr>`;
 
@@ -596,62 +688,215 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                  <td>${r.name}</td>
                  <td style="direction:ltr; text-align:right">${formatDurationEn(r.totalDelay)}</td>
                  <td>${r.daysLate}</td>
+                 <td>${r.absentCount}</td>
                  <td>${r.missingOutCount}</td>
              </tr>`).join('');
       return { header, body };
     };
 
-    if (printMode) { // Logic specific for Print (passed as arg or handled via separate function)
-      // ... handled below ...
-    }
-
     if (type === 'DETAILED') {
       const { header, body } = prepareRows();
       if (format === 'PRINT') {
-        const win = window.open('', '_blank');
-        win?.document.write(generateHTML(header, body, 'تقرير الحضور اليومي التفصيلي'));
-        win?.document.close();
-      } else if (format === 'XLS') {
-        const tableStyle = `width: 100%; border-collapse: collapse; font-family: 'Tajawal', sans-serif; font-size: 10pt; direction: rtl;`;
-        const thStyle = `background-color: #2c3e50; color: white; padding: 10px; text-align: center; font-weight: bold; border: 1px solid #ddd;`;
-        const tdStyle = `padding: 8px; border: 1px solid #ddd; text-align: center; color: #333;`;
+        // High-fidelity Print Styling
+        const customStyle = `
+          @media print {
+            @page { size: A4 landscape; margin: 10mm; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+          body { font-family: 'Tajawal', sans-serif; background: #fff; color: #1f2937; }
+          .container { width: 100%; max-width: 100%; margin: 0 auto; }
+          .header { text-align: center; margin-bottom: 2rem; }
+          .header h1 { color: #111827; font-size: 24px; font-weight: 800; margin-bottom: 0.5rem; }
+          .meta { color: #6b7280; font-size: 12px; font-weight: 500; }
+          
+          table { width: 100%; border-collapse: separate; border-spacing: 0; width: 100%; font-size: 11px; }
+          th { 
+            background-color: #f8fafc; 
+            color: #475569; 
+            font-weight: 800; 
+            padding: 12px 8px; 
+            text-align: right; 
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+          }
+          td { 
+            padding: 12px 8px; 
+            border-bottom: 1px solid #f1f5f9; 
+            vertical-align: middle;
+            color: #334155;
+          }
+          tr:last-child td { border-bottom: none; }
+          
+          /* Row Variants */
+          .row-absent { background-color: #fef2f2; }
+          .row-absent td { color: #991b1b; }
+          
+          .row-missing { background-color: #fff7ed; }
+          .row-late { }
+          
+          .tag { padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 10px; display: inline-block; }
+          .tag-late { color: #dc2626; background: #fef2f2; }
+          .tag-absent { color: #991b1b; background: #fee2e2; }
+          .tag-ok { color: #166534; background: #f0fdf4; }
+        `;
 
-        // Re-generate basic HTML for Excel (Inline Styles)
-        const xlsBody = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date)).map(r => {
+        const printHTML = `
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8">
+          <title>تقرير الحضور</title>
+          <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+          <style>${customStyle}</style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${title} ${employeeId ? `- ${targetEmployees[0]?.name}` : ''}</h1>
+            <div class="meta">الفترة: ${start} - ${end}</div>
+            <div class="meta">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div>
+          </div>
+          <table>
+            <thead>${header}</thead>
+            <tbody>${body}</tbody>
+          </table>
+          <script>window.onload = () => window.print();</script>
+        </body>
+        </html>`;
+
+        const win = window.open('', '_blank');
+        win?.document.write(printHTML);
+        win?.document.close();
+
+      } else if (format === 'XLS') {
+        const tableStyle = `width: 100%; border-collapse: collapse; font-family: 'Tajawal', sans-serif, Arial; font-size: 10pt; direction: rtl;`;
+
+        // Header Style (Light Blue Background, Dark Text)
+        const thStyle = `background-color: #f8fafc; color: #1e293b; padding: 12px; text-align: center; font-weight: bold; border: 1px solid #e2e8f0;`;
+
+        // Cell Style (Padding, Border, Dark Text)
+        const tdStyle = `padding: 10px; border: 1px solid #e2e8f0; text-align: center; color: #334155; vertical-align: middle;`;
+
+        const metaHTML = `
+          <div style="font-family: 'Tajawal', sans-serif; text-align: center; margin-bottom: 20px; direction: rtl;">
+            <h2 style="color: #1e293b; margin: 5px 0; font-size: 16pt;">${title} ${employeeId ? `- ${targetEmployees[0]?.name}` : ''}</h2>
+            <p style="color: #64748b; margin: 2px 0; font-size: 10pt;">الفترة: ${start} إلى ${end}</p>
+            <p style="color: #64748b; margin: 2px 0; font-size: 10pt;">تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-SA')}</p>
+          </div>
+        `;
+
+        const xlsBody = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date) || a.empName.localeCompare(b.empName)).map(r => {
+          if (r.isAbsent) {
+            // ABSENT ROW: Light Red Background, Dark Red Text
+            return `<tr style="background-color: #fef2f2;">
+                <td style="${tdStyle} color:#991b1b; font-weight:bold;">${r.empName}</td>
+                <td style="${tdStyle}">${r.displayDate}</td>
+                <td style="${tdStyle}">-</td>
+                <td style="${tdStyle}">-</td>
+                <td style="${tdStyle}">-</td>
+                <td style="${tdStyle} color:#991b1b; font-weight:bold;">لم يحضر</td>
+             </tr>`;
+          }
+
+          // LATE TEXT: Red Color if dailyDelay > 0
+          const delayStyle = r.dailyDelay > 0 ? 'color: #dc2626; font-weight: bold;' : '';
+
+          // MISSING CHECKOUT: Light Orange Row Background (optional, but let's keep it simple as requested)
+          // User asked for "Match the picture", picture showed Absent rows clearly.
+
           const timeIn = r.firstIn ? r.firstIn.toLocaleTimeString('en-US', { hour12: false }) : '--';
           const timeOut = r.lastOut ? r.lastOut.toLocaleTimeString('en-US', { hour12: false }) : '--';
+
           return `<tr>
-                <td style="${tdStyle}">${r.empName}</td>
+                <td style="${tdStyle} font-weight:bold;">${r.empName}</td>
                 <td style="${tdStyle}">${r.displayDate}</td>
                 <td style="${tdStyle}">${timeIn}</td>
                 <td style="${tdStyle}">${timeOut}</td>
-                <td style="${tdStyle}">${r.dailyDelay > 0 ? formatDurationEn(r.dailyDelay) : '-'}</td>
+                <td style="${tdStyle} ${delayStyle}">${r.dailyDelay > 0 ? formatDurationEn(r.dailyDelay) : '-'}</td>
                 <td style="${tdStyle}">${r.dailyDelay > 0 ? 'تأخير' : 'منتظم'}</td>
              </tr>`;
         }).join('');
 
-        const xlsHeader = `<tr><th style="${thStyle}">الموظف</th><th style="${thStyle}">التاريخ</th><th style="${thStyle}">دخول</th><th style="${thStyle}">خروج</th><th style="${thStyle}">تأخير</th><th style="${thStyle}">الحالة</th></tr>`;
+        const xlsHeader = `<tr>
+            <th style="${thStyle}">الموظف</th>
+            <th style="${thStyle}">التاريخ</th>
+            <th style="${thStyle}">دخول</th>
+            <th style="${thStyle}">خروج</th>
+            <th style="${thStyle}">تأخير</th>
+            <th style="${thStyle}">الحالة</th>
+        </tr>`;
+
         downloadFile(`
-            <html dir="rtl"><meta charset="UTF-8"><body>
-            <h3>تقرير الحضور: ${start} - ${end}</h3>
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+            <meta charset="UTF-8">
+            <!--[if gte mso 9]>
+            <xml>
+            <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+            <x:ExcelWorksheet>
+            <x:Name>Report</x:Name>
+            <x:WorksheetOptions>
+            <x:DisplayRightToLeft/>
+            </x:WorksheetOptions>
+            </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+            </x:ExcelWorkbook>
+            </xml>
+            <![endif]-->
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+                body { font-family: 'Tajawal', sans-serif, Arial; }
+                table { border-collapse: collapse; width: 100%; }
+                td, th { border: 1px solid #e2e8f0; }
+            </style>
+            </head>
+            <body>
+            ${metaHTML}
             <table style="${tableStyle}">${xlsHeader}${xlsBody}</table>
             </body></html>
         `, `Daily_Report_${start}.xls`, 'application/vnd.ms-excel');
 
       } else {
-        // CSV Logic...
-        const rows = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date));
-        const h = ['المعرف', 'الموظف', 'التاريخ', 'وقت الحضور', 'وقت الانصراف', 'التأخير', 'الحالة'];
-        const r = rows.map(row => [
-          row.empId,
-          row.empName,
-          row.displayDate,
-          row.firstIn ? row.firstIn.toLocaleTimeString('ar-SA') : '--',
-          row.lastOut ? row.lastOut.toLocaleTimeString('ar-SA') : 'لم يسجل',
-          row.dailyDelay > 0 ? formatDuration(row.dailyDelay) : '0',
-          (row.firstIn && !row.lastOut) ? 'لم يسجل خروج' : 'مكتمل'
-        ]);
-        downloadCSV(h, r, `Daily_Report_${start}.csv`);
+        // IMPROVED CSV FORMAT
+        const rows = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date) || a.empName.localeCompare(b.empName));
+
+        // Metadata Rows
+        const metaRows = [
+          [`تقرير الحضور اليومي - ${employeeId ? targetEmployees[0]?.name : 'شامل'}`],
+          [`الفترة: من ${start} إلى ${end}`],
+          [`تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-SA')}`],
+          [] // Empty spacer
+        ];
+
+        const h = ['المعرف', 'الموظف', 'التاريخ', 'وقت الحضور', 'وقت الانصراف', 'التأخير (دقيقة)', 'الحالة'];
+
+        const r = rows.map(row => {
+          if (row.isAbsent) {
+            return [row.empId, row.empName, row.displayDate, '-', '-', '0', 'لم يحضر'];
+          }
+          return [
+            row.empId,
+            row.empName,
+            row.displayDate,
+            row.firstIn ? row.firstIn.toLocaleTimeString('en-US', { hour12: false }) : '--',
+            row.lastOut ? row.lastOut.toLocaleTimeString('en-US', { hour12: false }) : '--',
+            row.dailyDelay > 0 ? row.dailyDelay.toString() : '0',
+            (row.firstIn && !row.lastOut) ? 'لم يسجل خروج' : (row.dailyDelay > 0 ? 'تأخير' : 'منتظم')
+          ];
+        });
+
+        // Combine Meta + Headers + Data
+        // downloadCSV expects string[][], so we just pass everything
+        // But headers is string[], we need to make it string[][] for consistency if we merge manualy, 
+        // OR update downloadCSV to handle it? 
+        // Let's manually construct the full array passed to downloadCSV, rename args?
+        // downloadCSV signature: (headers: string[], rows: string[][], filename)
+        // I will overload columns? No, let's keep headers separate but pass meta in rows? No headers stays as "First real header".
+        // Actually, let's allow downloadCSV to take a single "Data 2D Array" instead of Header+Rows split if possible, OR just hack the headers.
+
+        // Let's pass empty headers and put everything in 'rows'
+        const fullData = [...metaRows, h, ...r];
+        downloadCSV([], fullData as string[][], `Daily_Report_${start}.csv`);
       }
     } else {
       // SUMMARY
@@ -661,35 +906,66 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         win?.document.write(generateHTML(header, body, 'تقرير التأخير التجميعي'));
         win?.document.close();
       } else if (format === 'XLS') {
-        // XLS logic...
-        const thStyle = `background-color: #2c3e50; color: white; padding: 10px; text-align: center; font-weight: bold; border: 1px solid #ddd;`;
-        const tdStyle = `padding: 8px; border: 1px solid #ddd; text-align: center; color: #333;`;
-        const rows = Array.from(dailyMap.values()).reduce((acc, curr) => {
-          // simplified logic just for demo, need full reduce
-          return acc;
-        }, []); // Actually we need to reuse prepareSummaryRows logic for XLS too essentially.
+        const tableStyle = `width: 100%; border-collapse: collapse; font-family: 'Tajawal', Arial, sans-serif; font-size: 9pt; direction: rtl;`;
+        const thStyle = `background-color: #f3f4f6; color: #000; padding: 5px; text-align: center; font-weight: bold; border: 1px solid #999;`;
+        const tdStyle = `padding: 5px; border: 1px solid #999; text-align: center; color: #000;`;
 
-        // For simplicity in this edit, I will just call downloadCSV logic for XLS but with HTML wrapper if needed, 
-        // OR better: use the 'body' generated above but strip classes and add inline styles?
-        // To save token usage I will trust CSV for non-print for now or keep existing logic.
+        const metaHTML = `
+          <div style="font-family: 'Tajawal', sans-serif; text-align: center; margin-bottom: 20px; direction: rtl;">
+            <h3 style="margin: 5px 0;">تقرير التأخير التجميعي - ${employeeId ? targetEmployees[0]?.name : 'شامل'}</h3>
+            <p style="margin: 2px 0; font-size: 9pt;">الفترة: من ${start} إلى ${end}</p>
+            <p style="margin: 2px 0; font-size: 9pt;">تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-SA')}</p>
+          </div>
+        `;
 
-        // Re-implementing simplified XLS for Summary
-        const empMap = new Map();
+        const empMap = new Map<string, any>();
         dailyMap.forEach(day => {
           let e = empMap.get(day.empId);
-          if (!e) { e = { name: day.empName, totalDelay: 0, daysLate: 0 }; empMap.set(day.empId, e); }
-          e.totalDelay += day.dailyDelay;
-          if (day.dailyDelay > 0) e.daysLate++;
+          if (!e) { e = { name: day.empName, totalDelay: 0, daysLate: 0, absentCount: 0 }; empMap.set(day.empId, e); }
+          if (day.isAbsent) e.absentCount++;
+          else { e.totalDelay += day.dailyDelay; if (day.dailyDelay > 0) e.daysLate++; }
         });
         const summaryRows = Array.from(empMap.values()).sort((a: any, b: any) => b.totalDelay - a.totalDelay);
 
-        const xlsBody = summaryRows.map((r: any) => `<tr><td style="${tdStyle}">${r.name}</td><td style="${tdStyle}">${formatDurationEn(r.totalDelay)}</td><td style="${tdStyle}">${r.daysLate}</td></tr>`).join('');
-        downloadFile(`<html><meta charset="UTF-8"><body><table border="1">${xlsBody}</table></body></html>`, 'Summary.xls', 'application/vnd.ms-excel');
+        const xlsBody = summaryRows.map((r: any) => `<tr><td style="${tdStyle}">${r.name}</td><td style="${tdStyle}">${formatDurationEn(r.totalDelay)}</td><td style="${tdStyle}">${r.daysLate}</td><td style="${tdStyle}">${r.absentCount}</td></tr>`).join('');
+        const xlsHeader = `<tr><th style="${thStyle}">الموظف</th><th style="${thStyle}">ساعات التأخير</th><th style="${thStyle}">أيام التأخير</th><th style="${thStyle}">أيام الغياب</th></tr>`;
+
+        downloadFile(`
+            <html dir="rtl">
+            <head>
+            <meta charset="UTF-8">
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+                body { font-family: 'Tajawal', sans-serif; }
+            </style>
+            </head>
+            <body>
+            ${metaHTML}
+            <table style="${tableStyle}">${xlsHeader}${xlsBody}</table>
+            </body></html>`, 'Summary.xls', 'application/vnd.ms-excel');
       } else {
-        const { header, body } = prepareSummaryRows(); // We have this data
-        // Re-extract data for CSV...
-        // Keeping it simple.
-        // CSV Logic exists.
+        // CSV SUMMARY
+        const empMap = new Map<string, any>();
+        dailyMap.forEach(day => {
+          let e = empMap.get(day.empId);
+          if (!e) { e = { name: day.empName, totalDelay: 0, daysLate: 0, absentCount: 0 }; empMap.set(day.empId, e); }
+          if (day.isAbsent) e.absentCount++;
+          else { e.totalDelay += day.dailyDelay; if (day.dailyDelay > 0) e.daysLate++; }
+        });
+        const summaryRows = Array.from(empMap.values()).sort((a: any, b: any) => b.totalDelay - a.totalDelay);
+
+        const metaRows = [
+          [`تقرير الملخص التجميعي - ${employeeId ? targetEmployees[0]?.name : 'شامل'}`],
+          [`الفترة: من ${start} إلى ${end}`],
+          [`تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-SA')}`],
+          []
+        ];
+
+        const h = ['الموظف', 'ساعات التأخير', 'أيام التأخير', 'أيام الغياب'];
+        const r = summaryRows.map((row: any) => [row.name, formatDurationEn(row.totalDelay), row.daysLate, row.absentCount]);
+
+        const fullData = [...metaRows, h, ...r];
+        downloadCSV([], fullData as string[][], `Summary_Report_${start}.csv`);
       }
     }
 
@@ -799,6 +1075,25 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                   onChange={(e) => setEndDate(e.target.value)}
                   className="w-full pl-3 pr-4 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm font-medium transition-all shadow-sm"
                 />
+              </div>
+            </div>
+            {/* Employee Filter */}
+            <div className="xl:col-span-3">
+              <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">فلترة حسب الموظف</label>
+              <div className="relative">
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="w-full pl-3 pr-8 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm font-medium transition-all shadow-sm appearance-none"
+                >
+                  <option value="">-- جميع الموظفين --</option>
+                  {allEmployees.map(emp => (
+                    <option key={emp.code} value={emp.code}>{emp.name}</option>
+                  ))}
+                </select>
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <UserPlus size={16} />
+                </div>
               </div>
             </div>
           </div>
@@ -1160,25 +1455,38 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                 {/* Date Range */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">من</label>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">من تاريخ</label>
                     <input
                       type="date"
                       value={exportConfig.start}
-                      onChange={(e) => setExportConfig(c => ({ ...c, start: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-white/50 dark:bg-slate-800/50 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                      onChange={(e) => setExportConfig({ ...exportConfig, start: e.target.value })}
+                      className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">إلى</label>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">إلى تاريخ</label>
                     <input
                       type="date"
                       value={exportConfig.end}
-                      onChange={(e) => setExportConfig(c => ({ ...c, end: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-white/50 dark:bg-slate-800/50 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                      onChange={(e) => setExportConfig({ ...exportConfig, end: e.target.value })}
+                      className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
                     />
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">تحديد موظف (اختياري)</label>
+                  <select
+                    value={exportConfig.employeeId}
+                    onChange={(e) => setExportConfig({ ...exportConfig, employeeId: e.target.value })}
+                    className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                  >
+                    <option value="">-- تقرير شامل لجميع الموظفين --</option>
+                    {allEmployees.map(emp => (
+                      <option key={emp.code} value={emp.code}>{emp.name}</option>
+                    ))}
+                  </select>
+                </div>
                 {/* Format Selection */}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 mb-3 uppercase tracking-wider">الصيغة</label>

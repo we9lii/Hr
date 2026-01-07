@@ -6,7 +6,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'الإدارة',
         lat: 26.3668611,
         lng: 43.9089722,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -14,7 +14,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'محلات القصيم',
         lat: 26.3522500,
         lng: 43.9499167,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -22,7 +22,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'معرض الرياض',
         lat: 24.6425281,
         lng: 46.7240967,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -38,7 +38,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع طبرجل',
         lat: 30.1468929,
         lng: 38.3993353,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -46,7 +46,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع وادي الدواسر',
         lat: 20.4551073,
         lng: 44.8291926,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -54,7 +54,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع الصرار',
         lat: 26.9747897,
         lng: 48.3935929,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -70,7 +70,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'فرع الدمام',
         lat: 26.3968125,
         lng: 50.0398125,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -78,7 +78,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'القسم النسائي',
         lat: 26.3748889,
         lng: 43.895,
-        radius: 15,
+        radius: 25,
         active: true
     },
     {
@@ -86,7 +86,7 @@ export const LOCATIONS: LocationConfig[] = [
         name: 'جهاز تجريبي ( فيصل )',
         lat: 0, // Requires Update
         lng: 0,
-        radius: 20,
+        radius: 25,
         active: true
     }
 ];

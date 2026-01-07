@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import Layout from './components/Layout';
 import { fetchAttendanceLogs, loginUser, fetchDevices, fetchEmployeeCount, fetchDeviceEmployees, fetchAllEmployees, fetchEmployeeLogs, bindDevice } from './services/api';
 
@@ -170,6 +171,12 @@ const App: React.FC = () => {
     setLoginError(null);
     try {
       const user = await loginUser(username, password);
+
+      // RESTRICTION: Employees can only login via Native App (Android/iOS)
+      if (user.role === 'EMPLOYEE' && !Capacitor.isNativePlatform()) {
+        throw new Error("يرجى الدخول عن طريق التطبيق ، في حال عدم توفر التطبيق يرجى تواصل مع الدعم للحصول على نسختك");
+      }
+
       setCurrentUser(user);
       if (rememberMe) {
         localStorage.setItem('currentUser', JSON.stringify(user));
