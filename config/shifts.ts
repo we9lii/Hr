@@ -9,6 +9,7 @@ export interface DeviceRule {
     matcher: (device: Device | { sn: string, alias?: string }) => boolean;
     shifts: ShiftConfig[];
     aliasOverride?: string;
+    shiftType?: 'SPLIT' | 'ALTERNATING'; // SPLIT = Works both shifts (default). ALTERNATING = Works one of them.
 }
 
 // ----------------------------------------------------------------------
@@ -23,7 +24,20 @@ export const DEVICE_RULES: DeviceRule[] = [
             { start: '08:00', end: '11:30' },
             { start: '15:30', end: '20:30' }
         ],
-        aliasOverride: 'فرع الصرار'
+        aliasOverride: 'فرع الصرار',
+        shiftType: 'SPLIT'
+    },
+    // ... (Others remain SPLIT by default logic in consumers if undefined)
+
+    // 6. القسم النسائي (Ladies Section)
+    {
+        matcher: (d) => (d.alias || '').includes('نسائي') || (d.alias || '').toLowerCase().includes('ladies'),
+        shifts: [
+            { start: '08:00', end: '15:10' },
+            { start: '14:50', end: '22:00' }
+        ],
+        aliasOverride: 'القسم النسائي',
+        shiftType: 'ALTERNATING' // Smart Recognition: Auto-detect shift based on time
     },
     // 2. مستودع الحديد القصيم (Qassim Iron Warehouse)
     {
@@ -60,6 +74,7 @@ export const DEVICE_RULES: DeviceRule[] = [
         aliasOverride: 'فرع الدمام'
     },
     // 6. القسم النسائي (Ladies Section)
+    // TODO: Future Requirement - Dynamic weekly shift scheduling (Admin will define morning/evening staff weekly)
     {
         matcher: (d) => (d.alias || '').includes('نسائي') || (d.alias || '').toLowerCase().includes('ladies'),
         shifts: [
@@ -126,6 +141,7 @@ export const getDeviceConfig = (device: { sn: string; alias?: string; }) => {
     // 2. Return config or defaults
     return {
         alias: rule?.aliasOverride || device.alias || `جهاز ${device.sn}`,
-        shifts: rule?.shifts && rule.shifts.length > 0 ? rule.shifts : DEFAULT_SHIFTS
+        shifts: rule?.shifts && rule.shifts.length > 0 ? rule.shifts : DEFAULT_SHIFTS,
+        shiftType: rule?.shiftType || 'SPLIT'
     };
 };

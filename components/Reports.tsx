@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { AttendanceRecord, Device } from '../types';
 import { fetchDeviceEmployees, fetchAttendanceLogsRange, submitManualAttendance, fetchAllEmployees } from '../services/api';
-import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus, Printer } from 'lucide-react';
+import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus, Printer, Search } from 'lucide-react';
 import { getDeviceConfig } from '../config/shifts';
 
 interface ReportsProps {
@@ -63,6 +63,24 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
 
+  // Print Modal State
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printConfig, setPrintConfig] = useState({
+    start: new Date().toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0],
+    employeeIds: [] as string[], // Empty = ALL result
+    deviceSn: 'ALL'
+  });
+
+  // Print Modal UI State
+  const [printEmpSearch, setPrintEmpSearch] = useState('');
+  const [printAvailableEmployees, setPrintAvailableEmployees] = useState<{ code: string; name: string }[]>([]);
+
+  // Always show ALL employees in the list, regardless of Device Selection
+  useEffect(() => {
+    setPrintAvailableEmployees(allEmployees);
+  }, [allEmployees]);
+
   // Load All Employees on Mount
   useEffect(() => {
     fetchAllEmployees().then(setAllEmployees).catch(e => console.error("Failed to load employees", e));
@@ -96,6 +114,299 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     } finally {
       setManualSubmitting(false);
     }
+  };
+
+  const handlePrintDelayReport = async () => {
+    // 0. Pre-open window
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return alert("السماح بالنوافذ المنبثقة مطلوب");
+
+    printWindow.document.write(`
+        <div style="font-family: sans-serif; text-align: center; padding: 50px; direction: rtl;">
+            <h3>جارِ تحضير التقرير...</h3>
+            <p>يرجى الانتظار بينما يتم جلب البيانات ومطابقة الورديات...</p>
+        </div>
+    `);
+
+    // 1. Fetch Data (Client-side filtering for accuracy)
+    const s = new Date(printConfig.start);
+    const e = new Date(printConfig.end);
+    e.setHours(23, 59, 59, 999);
+
+    let reportLogs = [];
+    try {
+      // Revert to fetching all logs to ensure we have OUT punches for finding Overtime
+      reportLogs = await fetchAttendanceLogsRange(s, e);
+    } catch (err) {
+      printWindow.close();
+      alert("فشل جلب البيانات");
+      return;
+    }
+
+    // 2. Filter Client-Side - STRICTLY for Employee specific, but INCLUDE ALL DEVICES to ensure we catch Check-In/Check-Out pairs across different gates.
+    const filtered = reportLogs.filter(log => {
+      // Logic Update: Multi-Select Support
+      const selectedIds = printConfig.employeeIds || [];
+      // Empty array means ALL. specific IDs means filter.
+      if (selectedIds.length > 0 && !selectedIds.includes(log.employeeId)) return false;
+      return true;
+    });
+
+    // 3. Group Logs by Employee & Day (Robust Grouping)
+    const groups = new Map<string, AttendanceRecord[]>();
+    filtered.forEach(log => {
+      const d = new Date(log.timestamp);
+      const dayKey = d.toDateString();
+      const key = `${log.employeeId}|${dayKey}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)?.push(log);
+    });
+
+    // 4. Process Logic (Flexible Hours with Split Shift Support)
+    const empStats = new Map();
+
+    groups.forEach((dayLogs, key) => {
+      // CRITICAL FIX: Sort logs ASCENDING (Oldest First) to ensure 'firstIn' is actually the FIRST punch
+      // Otherwise, since API returns DESC, 'firstIn' finds the LAST punch, causing massive delay calculations.
+      dayLogs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+      const [empId] = key.split('|');
+      const firstIn = dayLogs.find(l => l.type === 'CHECK_IN');
+      if (!firstIn) return; // Need at least one Check-In
+
+      // Init Stat
+      if (!empStats.has(empId)) {
+        empStats.set(empId, {
+          name: dayLogs[0].employeeName,
+          totalLate: 0,
+          lateCount: 0,
+          matchedDevice: printConfig.deviceSn === 'ALL' // Default true if All
+        });
+      }
+      const stat = empStats.get(empId);
+
+      // Check if this day had any punch from the selected device
+      if (printConfig.deviceSn !== 'ALL' && !stat.matchedDevice) {
+        if (dayLogs.some(l => l.deviceSn === printConfig.deviceSn)) {
+          stat.matchedDevice = true;
+        }
+      }
+
+      const deviceConfig = getDeviceConfig({
+        sn: firstIn.deviceSn || 'UNKNOWN',
+        alias: firstIn.deviceAlias
+      });
+      const shifts = deviceConfig.shifts || [];
+      const shiftType = deviceConfig.shiftType || 'SPLIT';
+
+      let dailyTotalLate = 0;
+      let dailyTotalOvertime = 0;
+
+      if (shifts.length === 0) {
+        // Fallback
+        dailyTotalLate = calculateDelay(firstIn);
+      } else if (shiftType === 'ALTERNATING') {
+        // SMART RECOGNITION (Alternating)
+        const checkInTime = firstIn ? new Date(firstIn.timestamp) : new Date(dayLogs[0].timestamp);
+        const checkInHour = checkInTime.getHours();
+        let targetShift = shifts[0];
+        if (shifts.length > 1 && checkInHour >= 13) targetShift = shifts[1];
+
+        const [sh, sm] = targetShift.start.split(':').map(Number);
+        const [eh, em] = targetShift.end.split(':').map(Number);
+
+        // Delay
+        const shiftStart = new Date(firstIn.timestamp);
+        shiftStart.setHours(sh, sm, 0, 0);
+        if (checkInTime > shiftStart) {
+          dailyTotalLate = Math.floor((checkInTime.getTime() - shiftStart.getTime()) / 60000);
+        }
+
+        // Overtime
+        const lastOut = [...dayLogs].reverse().find(l => l.type === 'CHECK_OUT');
+        if (lastOut) {
+          const shiftEnd = new Date(lastOut.timestamp);
+          shiftEnd.setHours(eh, em, 0, 0);
+          if (eh < sh) shiftEnd.setDate(shiftEnd.getDate() + 1); // Midnight Cross
+          const outTime = new Date(lastOut.timestamp);
+          if (outTime > shiftEnd) {
+            dailyTotalOvertime = Math.floor((outTime.getTime() - shiftEnd.getTime()) / 60000);
+          }
+        }
+
+      } else {
+        const sortedShifts = [...shifts].sort((a, b) => parseInt(a.start) - parseInt(b.start));
+
+        sortedShifts.forEach((shift, index) => {
+          // Define Time Window
+          const [sh, sm] = shift.start.split(':').map(Number);
+          const [eh, em] = shift.end.split(':').map(Number);
+          let windowStart = 0;
+          let windowEnd = 24;
+
+          if (sortedShifts.length > 1) {
+            if (index === 0) {
+              const nextShift = sortedShifts[index + 1];
+              const [nsh, nsm] = nextShift.start.split(':').map(Number);
+              windowEnd = (eh + nsh) / 2;
+            } else {
+              const prevShift = sortedShifts[index - 1];
+              const [peh, pem] = prevShift.end.split(':').map(Number);
+              windowStart = (peh + sh) / 2;
+            }
+          }
+
+          // Filter logs for this shift session
+          const sessionLogs = dayLogs.filter(l => {
+            const h = new Date(l.timestamp).getHours();
+            return h >= windowStart && h < windowEnd;
+          });
+
+          if (sessionLogs.length > 0) {
+            const shiftIn = sessionLogs.find(l => l.type === 'CHECK_IN');
+            const shiftOut = [...sessionLogs].reverse().find(l => l.type === 'CHECK_OUT');
+
+            // Delay
+            if (shiftIn) {
+              const shiftStart = new Date(shiftIn.timestamp);
+              shiftStart.setHours(sh, sm, 0, 0);
+              const inTime = new Date(shiftIn.timestamp);
+              if (inTime > shiftStart) {
+                dailyTotalLate += Math.floor((inTime.getTime() - shiftStart.getTime()) / 60000);
+              }
+            }
+
+            // Overtime
+            if (shiftOut) {
+              const shiftEnd = new Date(shiftOut.timestamp);
+              shiftEnd.setHours(eh, em, 0, 0);
+              if (eh < sh) shiftEnd.setDate(shiftEnd.getDate() + 1); // Midnight Cross
+
+              const outTime = new Date(shiftOut.timestamp);
+              if (outTime > shiftEnd) {
+                dailyTotalOvertime += Math.floor((outTime.getTime() - shiftEnd.getTime()) / 60000);
+              }
+            }
+          }
+        });
+      }
+
+      // Net Calculation
+      const netDelay = Math.max(0, dailyTotalLate - dailyTotalOvertime);
+
+      if (netDelay > 0) {
+        stat.totalLate += netDelay;
+        stat.lateCount += 1;
+      }
+    });
+
+    // Filter out employees with 0 Total Late AND respect Device Filter
+    const lateEmployees = Array.from(empStats.values()).filter(s => {
+      if (s.totalLate <= 0) return false;
+      if (printConfig.deviceSn !== 'ALL' && !s.matchedDevice) return false;
+      return true;
+    });
+
+    // Sort by most late
+    lateEmployees.sort((a, b) => b.totalLate - a.totalLate);
+
+    // 5. Generate HTML
+    const rows = lateEmployees.map(stat => `
+        <tr class="border-b border-gray-200">
+            <td class="p-3 text-right font-bold">${stat.name}</td>
+            <td class="p-3 text-center">${stat.lateCount}</td>
+            <td class="p-3 text-center font-mono" dir="ltr">${Math.floor(stat.totalLate / 60)}h ${stat.totalLate % 60}m</td>
+            <td class="p-3 text-center text-red-600 font-bold">${stat.totalLate} دقيقة</td>
+        </tr>
+    `).join('');
+
+    const html = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+            <title>تقرير التأخير - QSSUN HR</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+                body { font-family: 'Tajawal', sans-serif; background: white; }
+                @media print {
+                    .no-print { display: none; }
+                    body { -webkit-print-color-adjust: exact; }
+                    table { page-break-inside: auto; }
+                    tr { page-break-inside: avoid; page-break-after: auto; }
+                    thead { display: table-header-group; }
+                    tfoot { display: table-footer-group; }
+                }
+            </style>
+        </head>
+        <body class="p-8">
+            <div class="max-w-4xl mx-auto border-4 border-double border-slate-800 p-8 min-h-[90vh] relative">
+                
+                <!-- Header -->
+                <div class="flex justify-between items-center mb-8 border-b-2 border-slate-800 pb-4">
+                     <div>
+                        <h1 class="text-3xl font-black text-slate-900 mb-2">تقرير التأخيرات (الصافي)</h1>
+                        <p class="text-slate-600 font-bold">من ${printConfig.start} إلى ${printConfig.end}</p>
+                     </div>
+                     <div class="text-left">
+                        <h2 class="text-xl font-bold text-slate-800">QSSUN ENERGY</h2>
+                        <p class="text-sm text-slate-500">نظام الموارد البشرية</p>
+                     </div>
+                </div>
+
+                <!-- Stats Summary -->
+                <div class="grid grid-cols-3 gap-4 mb-8">
+                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-xl text-center">
+                        <p class="text-xs font-bold text-gray-500 mb-1">الموظفين المتأخرين</p>
+                        <p class="text-2xl font-black text-slate-800">${empStats.size}</p>
+                    </div>
+                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-xl text-center">
+                         <p class="text-xs font-bold text-gray-500 mb-1">صافي التأخير (بالدقائق)</p>
+                        <p class="text-2xl font-black text-red-600">${Array.from(empStats.values()).reduce((a, b) => a + b.totalLate, 0)}</p>
+                    </div>
+                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-xl text-center">
+                        <p class="text-xs font-bold text-gray-500 mb-1">تاريخ التقرير</p>
+                        <p class="text-lg font-bold text-slate-800">${new Date().toLocaleDateString('ar-SA')}</p>
+                    </div>
+                </div>
+
+                <!-- Alert -->
+                <div class="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                    <span><strong>ملاحظة:</strong> يتم خصم دقائق العمل الإضافي (بعد نهاية الدوام) من دقائق التأخير الصباحي تلقائياً في هذا التقرير.</span>
+                </div>
+
+                <!-- Table -->
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-slate-900 text-white">
+                            <th class="p-3 text-right rounded-r-lg">الموظف</th>
+                            <th class="p-3 text-center">أيام التأخير</th>
+                            <th class="p-3 text-center">المدة (ساعات)</th>
+                            <th class="p-3 text-center rounded-l-lg">صافي الدقائق</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+
+                <!-- Footer -->
+                <div class="absolute bottom-4 left-0 w-full text-center text-xs text-gray-400 font-mono">
+                    Generated by QSSUN HR System • ${new Date().toLocaleString()}
+                </div>
+            </div>
+            <script>
+                setTimeout(() => { window.print(); }, 500);
+            </script>
+        </body>
+        </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    setPrintModalOpen(false);
   };
 
   // ... rest of UseEffects ...
@@ -158,14 +469,21 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     }
 
     // Calculate Delay against Target Shift
-    const [h, m] = targetShift.start.split(':').map(Number);
-    const shiftStart = new Date(log.timestamp); // Clone date (we reuse checkInTime Year/Month/Day)
+    let [h, m] = targetShift.start.split(':').map(Number);
+
+    const shiftStart = new Date(log.timestamp); // Clone date
     shiftStart.setHours(h, m, 0, 0);
 
-    const diffMs = checkInTime.getTime() - shiftStart.getTime();
+    const checkInMs = checkInTime.getTime();
+    const startMs = shiftStart.getTime();
 
-    // Strict Match: Any time > start is late.
-    return Math.max(0, Math.floor(diffMs / 60000));
+    if (checkInMs <= startMs) return 0;
+
+    // Strict Diff: 
+    // 08:00:00 start
+    // 08:00:59 check-in -> diff 59000 -> 59000/60000 = 0.98 -> floor = 0 (On Time)
+    // 08:01:00 check-in -> diff 60000 -> 60000/60000 = 1.0 -> floor = 1 (Late)
+    return Math.floor((checkInMs - startMs) / 60000);
   };
 
   const filteredData = useMemo(() => {
@@ -335,7 +653,134 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         }
       });
 
-      const lateMins = firstIn ? calculateDelay(firstIn) : 0;
+      // ---------------------------------------------------------
+      // MULTI-SHIFT / SPLIT SHIFT LOGIC (Updated V2)
+      // ---------------------------------------------------------
+
+      const deviceConfig = getDeviceConfig({
+        sn: firstIn?.deviceSn || 'UNKNOWN',
+        alias: firstIn?.deviceAlias
+      });
+      const shifts = deviceConfig.shifts || [];
+      const shiftType = deviceConfig.shiftType || 'SPLIT';
+
+      let totalDelay = 0;
+      let totalOvertimeRaw = 0;
+
+      if (shifts.length === 0) {
+        // Fallback: No Shift Config -> Use Default 8:00 AM logic on First In
+        if (firstIn) totalDelay = calculateDelay(firstIn);
+      } else if (shiftType === 'ALTERNATING') {
+        // -------------------------------------------------------------
+        // SMART RECOGNITION (Alternating e.g. Ladies Section)
+        // -------------------------------------------------------------
+        const checkInTime = firstIn ? new Date(firstIn.timestamp) : new Date(dayLogs[0].timestamp);
+        const checkInHour = checkInTime.getHours();
+
+        let targetShift = shifts[0];
+        if (shifts.length > 1 && checkInHour >= 13) targetShift = shifts[1];
+
+        const [sh, sm] = targetShift.start.split(':').map(Number);
+        const [eh, em] = targetShift.end.split(':').map(Number);
+
+        // 1. Delay
+        if (firstIn) {
+          const shiftStart = new Date(firstIn.timestamp);
+          shiftStart.setHours(sh, sm, 0, 0);
+          if (checkInTime > shiftStart) {
+            totalDelay = Math.floor((checkInTime.getTime() - shiftStart.getTime()) / 60000);
+          }
+        }
+
+        // 2. Overtime
+        if (lastOut) {
+          const shiftEnd = new Date(lastOut.timestamp);
+          shiftEnd.setHours(eh, em, 0, 0);
+          if (eh < sh) shiftEnd.setDate(shiftEnd.getDate() + 1); // Midnight Cross
+
+          const outTime = new Date(lastOut.timestamp);
+          if (outTime > shiftEnd) {
+            totalOvertimeRaw = Math.floor((outTime.getTime() - shiftEnd.getTime()) / 60000);
+          }
+        }
+      } else {
+        // We have defined shifts (1 or 2). We need to match logs to shifts.
+        const sortedShifts = [...shifts].sort((a, b) => parseInt(a.start) - parseInt(b.start));
+
+        sortedShifts.forEach((shift, index) => {
+          // Define Time Window for this Shift
+          const [sh, sm] = shift.start.split(':').map(Number);
+          const [eh, em] = shift.end.split(':').map(Number);
+
+          let windowStart = 0; // 00:00
+          let windowEnd = 24;  // 23:59
+
+          if (sortedShifts.length > 1) {
+            if (index === 0) {
+              // First Shift: Ends at midpoint to next shift
+              const nextShift = sortedShifts[index + 1];
+              const [nsh, nsm] = nextShift.start.split(':').map(Number);
+              windowEnd = (eh + nsh) / 2; // Approximate hour split
+            } else {
+              // Second Shift: Starts at midpoint from prev shift
+              const prevShift = sortedShifts[index - 1];
+              const [peh, pem] = prevShift.end.split(':').map(Number);
+              windowStart = (peh + sh) / 2;
+            }
+          }
+
+          // Filter logs for this shift window
+          const sessionLogs = dayLogs.filter(l => {
+            const h = new Date(l.timestamp).getHours();
+            return h >= windowStart && h < windowEnd;
+          });
+
+          if (sessionLogs.length > 0) {
+            const shiftFirstIn = sessionLogs.find(l => l.type === 'CHECK_IN');
+            const shiftLastOut = [...sessionLogs].reverse().find(l => l.type === 'CHECK_OUT');
+
+            // 1. Calculate Delay for this Shift session
+            if (shiftFirstIn) {
+              // Custom calc vs this specific shift object
+              const shiftStart = new Date(shiftFirstIn.timestamp);
+              shiftStart.setHours(sh, sm, 0, 0);
+              const inTime = new Date(shiftFirstIn.timestamp);
+
+              if (inTime > shiftStart) {
+                totalDelay += Math.floor((inTime.getTime() - shiftStart.getTime()) / 60000);
+              }
+            } else {
+              // Missing In? (Maybe treat as Absent or Full Delay? User hasn't specified. Ignore for now)
+            }
+
+            // 2. Calculate Overtime for this Shift session
+            if (shiftLastOut) {
+              const shiftEnd = new Date(shiftLastOut.timestamp);
+              shiftEnd.setHours(eh, em, 0, 0);
+
+              // Midnight Crossing Check
+              if (eh < sh) shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+              const outTime = new Date(shiftLastOut.timestamp);
+              if (outTime > shiftEnd) {
+                totalOvertimeRaw += Math.floor((outTime.getTime() - shiftEnd.getTime()) / 60000);
+              }
+            }
+          }
+        });
+      }
+
+      // Final Net Calculation
+      let overtimeOffset = 0;
+      let lateMins = totalDelay;
+
+      // Uncapped Offset
+      if (totalOvertimeRaw > 0 && lateMins > 0) {
+        overtimeOffset = Math.min(totalOvertimeRaw, lateMins);
+        lateMins -= overtimeOffset;
+      }
+
+      let netOvertime = totalOvertimeRaw - overtimeOffset;
 
       rows.push({
         id: key,
@@ -346,6 +791,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         lastOut,
         breakMinutes,
         lateMinutes: lateMins,
+        netOvertime, // Store for UI
         logsCount: dayLogs.length
       });
     });
@@ -1001,11 +1447,11 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
               <span>تسجيل حركة يدوية</span>
             </button>
             <button
-              onClick={() => handleExportSubmit({ format: 'PRINT' })}
+              onClick={() => setPrintModalOpen(true)}
               className="w-full sm:flex-1 xl:flex-none flex items-center justify-center gap-2 bg-slate-800 text-slate-200 px-4 md:px-6 py-2.5 md:py-3 rounded-2xl hover:bg-slate-700/80 transition-all font-bold border border-slate-700 active:scale-95 text-sm md:text-base shadow-sm hover:shadow-md whitespace-nowrap"
             >
               <Printer size={16} className="md:w-[18px] text-purple-500" />
-              <span>طباعة</span>
+              <span>طباعة تقرير التأخير</span>
             </button>
             <button
               onClick={() => setExportModalOpen(true)}
@@ -1380,7 +1826,13 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                             <div className="flex flex-col items-start gap-1">
                               {log.lateMinutes > 0 ? (
                                 <span className="text-red-400 text-[10px] md:text-xs font-bold bg-red-900/20 px-2 py-0.5 rounded border border-red-900/30 whitespace-nowrap">{formatDuration(log.lateMinutes)} تأخير</span>
-                              ) : <span className="text-emerald-400 text-[10px]">منتظم</span>}
+                              ) : log.netOvertime > 0 ? (
+                                <span className="text-purple-400 text-[10px] md:text-xs font-bold bg-purple-900/20 px-2 py-0.5 rounded border border-purple-900/30 whitespace-nowrap flex items-center gap-1">
+                                  + {formatDuration(log.netOvertime)} إضافي
+                                </span>
+                              ) : (
+                                <span className="text-emerald-400 text-[10px] bg-emerald-900/10 px-2 py-0.5 rounded border border-emerald-900/20">منتظم</span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-[10px] md:text-xs text-slate-400 font-mono truncate max-w-[80px] md:max-w-[200px] block" title={log.location?.address}>
@@ -1527,6 +1979,177 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
           </div>
         )
       }
+
+      {/* Print Modal */}
+      {printModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-scale-in">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900">
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Printer className="text-blue-500" />
+                طباعة تقرير التأخير
+              </h3>
+              <button onClick={() => setPrintModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-600 dark:text-slate-400">من تاريخ</label>
+                  <input
+                    type="date"
+                    value={printConfig.start}
+                    onChange={e => setPrintConfig({ ...printConfig, start: e.target.value })}
+                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-600 dark:text-slate-400">إلى تاريخ</label>
+                  <input
+                    type="date"
+                    value={printConfig.end}
+                    onChange={e => setPrintConfig({ ...printConfig, end: e.target.value })}
+                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Employee Multi-Select & Search */}
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-600 dark:text-slate-400">الموظفين</label>
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 overflow-hidden">
+                  {/* Search Header */}
+                  <div className="p-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 bg-white dark:bg-slate-900">
+                    <Search size={16} className="text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="بحث عن موظف..."
+                      value={printEmpSearch}
+                      onChange={e => setPrintEmpSearch(e.target.value)}
+                      className="w-full bg-transparent text-sm outline-none text-slate-700 dark:text-white placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  {/* Options List */}
+                  <div className="max-h-48 overflow-y-auto p-1 custom-scrollbar">
+                    {/* Select All Option */}
+                    <label className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer transition-colors border-b border-transparent hover:border-slate-200 dark:hover:border-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={printConfig.employeeIds.length === 0}
+                        onChange={() => setPrintConfig(c => ({ ...c, employeeIds: [] }))}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">جميع الموظفين ({printAvailableEmployees.length})</span>
+                    </label>
+
+                    {/* Filtered List */}
+                    <div className="space-y-0.5 mt-1">
+                      {printAvailableEmployees
+                        .filter(e => e.name.toLowerCase().includes(printEmpSearch.toLowerCase()) || e.code.includes(printEmpSearch))
+                        .map(emp => {
+                          const isSelected = printConfig.employeeIds.includes(emp.code);
+                          return (
+                            <label key={emp.code} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  setPrintConfig(prev => {
+                                    const current = prev.employeeIds;
+                                    if (e.target.checked) {
+                                      // Add logic: If we are adding, we are no longer in "ALL" mode, so just push.
+                                      // If current was empty (ALL), and we click one, implies we want ONLY that one?
+                                      // NO. Standard UX: If "All" is selected (empty logic), and I select "Ahmed", usually it means "Only Ahmed".
+                                      // So logic:
+                                      // If current.length === 0 (ALL mode) -> new set is [id].
+                                      // Else -> [...current, id].
+                                      return { ...prev, employeeIds: [...current, emp.code] };
+                                    } else {
+                                      // Remove
+                                      const newVal = current.filter(id => id !== emp.code);
+                                      // If newVal becomes empty, does it mean ALL?
+                                      // If I deselect the last person, do I want NO ONE or EVERYONE?
+                                      // Usually NONE. But my logic says Empty=ALL.
+                                      // This is a UX conflict.
+                                      // Let's keep strict: Empty = ALL.
+                                      // If user deselects last one -> Goes back to ALL.
+                                      return { ...prev, employeeIds: newVal };
+                                    }
+                                  });
+                                }}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                              />
+                              <div className="flex flex-col">
+                                <span className="text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200">{emp.name}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">{emp.code}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      {printAvailableEmployees.length === 0 && (
+                        <p className="text-center text-xs text-slate-400 py-4">لا يوجد موظفين لهذا الجهاز</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[10px] text-slate-400">
+                    {printConfig.employeeIds.length === 0 ? 'يتم عرض تقرير لجميع الموظفين' : `تم تحديد ${printConfig.employeeIds.length} موظف`}
+                  </span>
+                  {printConfig.employeeIds.length > 0 && (
+                    <button
+                      onClick={() => setPrintConfig(c => ({ ...c, employeeIds: [] }))}
+                      className="text-[10px] text-blue-500 hover:text-blue-400 font-bold"
+                    >
+                      إلغاء التحديد
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-600 dark:text-slate-400">الجهاز</label>
+                <select
+                  value={printConfig.deviceSn}
+                  onChange={e => setPrintConfig({ ...printConfig, deviceSn: e.target.value })}
+                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="ALL">جميع الأجهزة</option>
+                  {devices.map(d => (
+                    <option key={d.sn} value={d.sn}>{d.alias || d.sn}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 flex items-start gap-3">
+                <AlertTriangle size={18} className="text-blue-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-600 dark:text-blue-300 font-medium leading-relaxed">
+                  سيتم توليد تقرير PDF يحتوي فقط على ساعات ودقائق التأخير للموظفين المحددين في الفترة المختارة، جاهز للطباعة المباشرة.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 bg-slate-50/50 dark:bg-slate-900">
+              <button
+                onClick={() => setPrintModalOpen(false)}
+                className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handlePrintDelayReport}
+                className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold shadow-lg shadow-slate-900/20 active:scale-95 transition-all flex items-center gap-2"
+              >
+                <Printer size={18} />
+                طباعة التقرير
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Manual Entry Modal */}
       {

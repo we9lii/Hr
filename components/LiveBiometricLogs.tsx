@@ -125,12 +125,34 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
     };
 
     const getStatusLabel = (log: DeviceLog) => {
-        // Logic to determine Late/Regular based on time
-        const timeStr = new Date((log.created_at || log.check_time) + ' UTC').toLocaleTimeString('en-US', { hour12: false });
-        const startTime = settings?.workStartTime || '08:30:00';
+        // Resolve Shift Config for this device
+        const deviceConfig = getDeviceConfig({
+            sn: log.device_sn,
+            alias: log.device_name
+        });
+
+        // Parse Check-in Time
+        const checkInTime = new Date(log.created_at || log.check_time + ' UTC'); // Ensure correct timezone parsing if needed
+        const checkInHour = checkInTime.getHours();
+
+        // Determine Shift (Simple Logic: Morning < 13:00, Evening >= 13:00)
+        const shifts = deviceConfig.shifts;
+        let targetShift = shifts[0];
+        if (shifts.length > 1 && checkInHour >= 13) {
+            targetShift = shifts[1];
+        }
+
+        let [h, m] = targetShift.start.split(':').map(Number);
+
+
+
+        const shiftStart = new Date(checkInTime);
+        shiftStart.setHours(h, m, 0, 0);
+
+        const isLate = checkInTime.getTime() > shiftStart.getTime();
 
         if (log.status === 0 || log.status === 4 || log.status === 5) { // CheckIn types
-            if (timeStr > startTime) return { label: 'متأخر', color: 'text-amber-400 bg-amber-900/20 border-amber-900/30' };
+            if (isLate) return { label: 'متأخر', color: 'text-amber-400 bg-amber-900/20 border-amber-900/30' };
             return { label: 'منتظم', color: 'text-emerald-400 bg-emerald-900/20 border-emerald-900/30' };
         }
         return { label: '---', color: 'text-slate-400 bg-slate-800 border-slate-700' };

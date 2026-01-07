@@ -220,7 +220,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
   const { time, seconds } = formatTime(currentTime);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col relative overflow-hidden transition-colors duration-500 font-sans">
+    <div className="min-h-screen bg-slate-950 flex flex-col relative overflow-hidden transition-colors duration-500 font-sans">
 
       {/* Animated Background */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
@@ -232,7 +232,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
       </div>
 
       {/* Header Curve */}
-      <div className="absolute top-0 left-0 w-full h-[280px] bg-gradient-to-br from-blue-600 to-indigo-700 dark:from-slate-800 dark:to-slate-900 rounded-b-[60px] shadow-2xl shadow-blue-900/20 z-0">
+      <div className="absolute top-0 left-0 w-full h-[280px] bg-gradient-to-br from-slate-800 to-slate-900 rounded-b-[60px] shadow-2xl shadow-blue-900/20 z-0">
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
       </div>
 
@@ -243,7 +243,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
             <img src={user.avatar} alt="User" className="w-full h-full object-cover" />
           </div>
           <div className="mt-1">
-            <p className="text-blue-100 dark:text-slate-400 text-xs font-medium mb-0.5">مرحباً بك،</p>
+            <p className="text-slate-400 text-xs font-medium mb-0.5">مرحباً بك،</p>
             <h2 className="font-bold text-xl tracking-tight text-white">{user.name}</h2>
             <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-blue-100 border border-white/10 inline-block mt-1">
               {user.role === 'ADMIN' ? 'مسؤول النظام' : 'موظف'}
@@ -251,9 +251,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
           </div>
         </div>
         <div className="flex flex-col gap-3">
-          <button onClick={toggleTheme} className="p-2.5 bg-white/10 rounded-xl hover:bg-white/20 backdrop-blur-md border border-white/10 text-yellow-300 dark:text-blue-200 transition-all active:scale-95 shadow-lg">
-            {isDarkMode ? <Moon size={18} /> : <Sun size={18} />}
-          </button>
+          {/* Theme Toggle Removed */}
           <button onClick={onLogout} className="p-2.5 bg-white/10 rounded-xl hover:bg-white/20 backdrop-blur-md border border-white/10 text-white transition-all active:scale-95 shadow-lg">
             <LogOut size={18} />
           </button>
@@ -263,19 +261,19 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
       {/* Main Content Card */}
       <div className="flex-1 px-4 pb-6 relative z-10 flex flex-col items-center -mt-4">
         {/* Glass Card */}
-        <div className="w-full max-w-md bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-black/20 p-6 flex flex-col items-center border border-white/50 dark:border-slate-800 transition-colors h-full">
+        <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-xl rounded-[40px] shadow-black/20 p-6 flex flex-col items-center border border-slate-800 transition-colors h-full">
 
           {/* Time Display */}
           <div className="text-center mt-4 mb-4">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-medium mb-3 border border-slate-200 dark:border-slate-700/50">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-800 text-slate-400 text-xs font-medium mb-3 border border-slate-700/50">
               <Calendar size={12} />
               {currentTime.toLocaleDateString('ar-SA-u-ca-gregory', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
             <div className="relative">
-              <h1 className="text-7xl font-[800] text-slate-800 dark:text-white tracking-tighter leading-none" dir="ltr">
+              <h1 className="text-7xl font-[800] text-white tracking-tighter leading-none" dir="ltr">
                 {time}
               </h1>
-              <span className="absolute -right-6 top-2 text-xl font-light text-slate-400 dark:text-slate-600 font-mono">
+              <span className="absolute -right-6 top-2 text-xl font-light text-slate-600 font-mono">
                 {seconds}
               </span>
             </div>
@@ -285,10 +283,10 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
           <div className={`
                     w-full max-w-[95%] mb-6 p-4 rounded-3xl flex flex-col items-center justify-center gap-1.5 text-xs transition-all duration-300 border backdrop-blur-sm shadow-sm
                     ${error
-              ? 'bg-red-50/90 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/30'
+              ? 'bg-red-900/20 text-red-400 border-red-900/30'
               : nearestLocation?.allowed
-                ? 'bg-emerald-50/90 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30 ring-4 ring-emerald-50 dark:ring-emerald-900/10'
-                : 'bg-amber-50/90 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30'}
+                ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/30 ring-4 ring-emerald-900/10'
+                : 'bg-amber-900/20 text-amber-400 border-amber-900/30'}
                 `}>
             {error ? (
               <div className="flex items-center gap-2 font-bold"><AlertTriangle size={18} className="animate-bounce" /> {error}</div>
@@ -301,11 +299,11 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
 
                 {/* Accuracy Meter Visual */}
                 {location && (
-                  <div className="flex items-center gap-2 mt-2 bg-white/40 dark:bg-black/20 px-3 py-1 rounded-full border border-white/20">
-                    {location.accuracy < 20 ? <Wifi size={14} className="text-emerald-600 dark:text-emerald-400" /> : <Radar size={14} className="text-amber-600 animate-pulse" />}
+                  <div className="flex items-center gap-2 mt-2 bg-black/20 px-3 py-1 rounded-full border border-white/20">
+                    {location.accuracy < 20 ? <Wifi size={14} className="text-emerald-400" /> : <Radar size={14} className="text-amber-600 animate-pulse" />}
                     <span className="font-mono text-[10px] opacity-80">
                       دقة الإشارة:
-                      <strong className={`mx-1 ${location.accuracy < 20 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                      <strong className={`mx-1 ${location.accuracy < 20 ? 'text-emerald-400' : 'text-amber-400'}`}>
                         {Math.round(location.accuracy)}m
                       </strong>
                       {location.accuracy < 20 ? '(ممتاز)' : '(ضعيف)'}
@@ -334,7 +332,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
                 <select
                   value={selectedBranch}
                   onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="w-full p-2 rounded-lg bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30 text-xs font-bold text-blue-700 dark:text-blue-300 focus:outline-none"
+                  className="w-full p-2 rounded-lg bg-blue-900/10 border border-blue-900/30 text-xs font-bold text-blue-300 focus:outline-none"
                 >
                   <option value="">-- {nearestLocation?.allowed ? 'استخدم الموقع التلقائي' : 'تجاوز الموقع (اختر الفرع)'} --</option>
                   {LOCATIONS.filter(l => l.active).map(l => (
@@ -349,7 +347,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
           <div className="mb-4 relative z-20">
             <button
               onClick={() => setIsMenuOpen(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-bold text-sm hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all active:scale-95"
+              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 rounded-xl text-slate-300 font-bold text-sm hover:bg-slate-700 border border-slate-700 transition-all active:scale-95"
             >
               <MoreHorizontal size={16} />
               تغيير نوع الحركة
@@ -357,25 +355,25 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
 
             {/* Floating Menu */}
             {isMenuOpen && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 p-2 animate-fade-in-up origin-bottom">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 bg-slate-800 rounded-2xl shadow-2xl border border-slate-700 p-2 animate-fade-in-up origin-bottom">
                 <div className="flex justify-between items-center mb-2 px-2 pt-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">اختر نوع البصمة</span>
-                  <button onClick={() => setIsMenuOpen(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full"><X size={14} /></button>
+                  <button onClick={() => setIsMenuOpen(false)} className="p-1 hover:bg-slate-700 rounded-full"><X size={14} /></button>
                 </div>
                 <div className="grid grid-cols-1 gap-1">
-                  <button onClick={() => { setSelectedType('CHECK_IN'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'CHECK_IN' ? 'bg-emerald-50 text-emerald-600 font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                  <button onClick={() => { setSelectedType('CHECK_IN'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'CHECK_IN' ? 'bg-emerald-50 text-emerald-600 font-bold' : 'hover:bg-slate-700 text-slate-300'}`}>
                     <ArrowRightCircle size={18} className={selectedType === 'CHECK_IN' ? '' : 'text-emerald-500'} />
                     <span>حضور (دخول)</span>
                   </button>
-                  <button onClick={() => { setSelectedType('CHECK_OUT'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'CHECK_OUT' ? 'bg-rose-50 text-rose-600 font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                  <button onClick={() => { setSelectedType('CHECK_OUT'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'CHECK_OUT' ? 'bg-rose-50 text-rose-600 font-bold' : 'hover:bg-slate-700 text-slate-300'}`}>
                     <LogOut size={18} className={selectedType === 'CHECK_OUT' ? '' : 'text-rose-500'} />
                     <span>انصراف (خروج)</span>
                   </button>
-                  <button onClick={() => { setSelectedType('BREAK_OUT'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'BREAK_OUT' ? 'bg-amber-50 text-amber-600 font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                  <button onClick={() => { setSelectedType('BREAK_OUT'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'BREAK_OUT' ? 'bg-amber-50 text-amber-600 font-bold' : 'hover:bg-slate-700 text-slate-300'}`}>
                     <Coffee size={18} className={selectedType === 'BREAK_OUT' ? '' : 'text-amber-500'} />
                     <span>خروج استراحة</span>
                   </button>
-                  <button onClick={() => { setSelectedType('BREAK_IN'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'BREAK_IN' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                  <button onClick={() => { setSelectedType('BREAK_IN'); setIsMenuOpen(false); }} className={`flex items-center gap-3 p-3 rounded-xl transition-all ${selectedType === 'BREAK_IN' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-slate-700 text-slate-300'}`}>
                     <ArrowLeftCircle size={18} className={selectedType === 'BREAK_IN' ? '' : 'text-blue-500'} />
                     <span>عودة من استراحة</span>
                   </button>
@@ -398,8 +396,8 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
               onClick={handleAttendance}
               disabled={loading || (!isDev && (!location || !nearestLocation?.allowed))}
               className={`
-                            w-52 h-52 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-500 transform relative z-10 border-8 border-white dark:border-slate-800
-                            ${!isDev && (!location || !nearestLocation?.allowed) ? 'bg-slate-100 dark:bg-slate-800 grayscale cursor-not-allowed shadow-inner opacity-80' : 'hover:scale-105 active:scale-95 cursor-pointer'}
+                            w-52 h-52 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-500 transform relative z-10 border-8 border-slate-800
+                            ${!isDev && (!location || !nearestLocation?.allowed) ? 'bg-slate-800 grayscale cursor-not-allowed shadow-inner opacity-80' : 'hover:scale-105 active:scale-95 cursor-pointer'}
                             bg-gradient-to-br ${currentPunch.color}
                             ${currentPunch.shadow}
                         `}
@@ -440,7 +438,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
           {/* Last Punch Info */}
           {lastPunch && lastPunchType && (
             <div className="mt-auto mb-4 w-full animate-fade-in-up">
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-full ${lastPunchType === 'CHECK_IN' || lastPunchType === 'BREAK_IN' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
                     }`}>
@@ -448,12 +446,12 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
                   </div>
                   <div>
                     <p className="text-xs text-slate-400 font-bold mb-0.5">آخر هوية مسجلة</p>
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                    <p className="text-sm font-bold text-slate-200">
                       تم {getPunchDetails(lastPunchType).label} {lastPunchLocation && ` في ${lastPunchLocation}`}
                     </p>
                   </div>
                 </div>
-                <span className="font-mono text-lg font-bold text-slate-800 dark:text-white dir-ltr">
+                <span className="font-mono text-lg font-bold text-white dir-ltr">
                   {formatTime(lastPunch).time}
                 </span>
               </div>
@@ -466,7 +464,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
         </div>
       </div>
       {/* Footer */}
-      <footer className="w-full text-center py-4 text-[10px] text-slate-400 dark:text-slate-600 font-mono opacity-50 relative z-10">
+      <footer className="w-full text-center py-4 text-[10px] text-slate-600 font-mono opacity-50 relative z-10">
         © 2026 QSSUN Energy. Developed by Faisal.
       </footer>
     </div>

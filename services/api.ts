@@ -322,9 +322,26 @@ export const fetchAttendanceLogs = async (targetDate: Date = new Date()): Promis
   return fetchAttendanceLogsRange(start, end);
 };
 
-export const fetchAttendanceLogsRange = async (startDate: Date, endDate: Date): Promise<AttendanceRecord[]> => {
+export const fetchAttendanceLogsRange = async (
+  startDate: Date,
+  endDate: Date,
+  employeeId?: string,
+  deviceSn?: string
+): Promise<AttendanceRecord[]> => {
   const headers = await getHeaders();
-  let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time`;
+
+  // Format Dates for Django Filter (YYYY-MM-DD HH:MM:SS)
+  const gte = startDate.toISOString();
+  const lte = endDate.toISOString();
+
+  let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+
+  if (employeeId && employeeId !== 'ALL') {
+    url += `&emp_code=${employeeId}`;
+  }
+  if (deviceSn && deviceSn !== 'ALL') {
+    url += `&terminal_sn=${deviceSn}`;
+  }
   const out: AttendanceRecord[] = [];
   const startStr = startDate.toDateString();
   const endStr = endDate.toDateString();
@@ -798,7 +815,7 @@ export const fetchDevices = async (): Promise<DeviceInfo[]> => {
 
 export const fetchDeviceEmployees = async (terminalSn: string): Promise<{ empCode: string; empName: string }[]> => {
   const headers = await getHeaders();
-  const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?page_size=1000&ordering=-punch_time`, {
+  const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?page_size=1000&ordering=-id&terminal_sn=${terminalSn}`, {
     method: 'GET',
     headers
   });
