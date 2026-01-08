@@ -236,7 +236,7 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                             <td className="p-2 md:p-5">
                                                 <span className="text-[10px] md:text-xs text-slate-400 truncate max-w-[100px] md:max-w-[200px] block" title={log.location?.address}>
                                                     {log.location?.address || log.deviceAlias || (
-                                                        log.deviceSn === 'Web' ? 'تطبيق الجوال' : (log.deviceSn || '-')
+                                                        (log.deviceSn === 'Web' || log.deviceSn === 'Manual-Web') ? 'تطبيق الجوال' : (log.deviceSn || '-')
                                                     )}
                                                 </span>
                                                 {/* Accuracy Indicator */}
@@ -262,8 +262,13 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
 
                                                     switch (log.type) {
                                                         case 'CHECK_IN':
-                                                            label = 'حضور';
-                                                            color = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                                                            if (log.purpose && log.purpose.includes('غياب')) {
+                                                                label = 'غياب';
+                                                                color = 'bg-red-500/10 text-red-500 border border-red-500/20'; // Red for Absence
+                                                            } else {
+                                                                label = 'حضور';
+                                                                color = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                                                            }
                                                             break;
                                                         case 'CHECK_OUT':
                                                             label = 'انصراف';
@@ -279,9 +284,16 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                                             break;
                                                     }
                                                     return (
-                                                        <span className={`px-2 py-0.5 md:px-3 md:py-1 rounded-lg text-[10px] md:text-xs font-bold whitespace-nowrap ${color}`}>
-                                                            {label}
-                                                        </span>
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            <span className={`px-2 py-0.5 md:px-3 md:py-1 rounded-lg text-[10px] md:text-xs font-bold whitespace-nowrap ${color}`}>
+                                                                {label}
+                                                            </span>
+                                                            {log.purpose && (
+                                                                <span className="text-[9px] text-slate-400 max-w-[100px] truncate" title={log.purpose}>
+                                                                    {log.purpose}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })()}
                                             </td>

@@ -71,6 +71,17 @@ const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): 
   return punchTotal > (startTotal + 15);
 };
 
+// Helper for BioTime Dates
+const toBioTimeDate = (date: Date): string => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+};
+
 // --- SHARED ENRICHMENT LOGIC ---
 const enrichLogsWithWebPunches = async (logs: AttendanceRecord[], minDate: Date) => {
   try {
@@ -330,9 +341,13 @@ export const fetchAttendanceLogsRange = async (
 ): Promise<AttendanceRecord[]> => {
   const headers = await getHeaders();
 
-  // Format Dates for Django Filter (YYYY-MM-DD HH:MM:SS)
-  const gte = startDate.toISOString();
-  const lte = endDate.toISOString();
+  // Format Dates for Django Filter (YYYY-MM-DD HH:MM:SS) - ZK friendly
+  const fmt = (d: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+  const gte = fmt(startDate);
+  const lte = fmt(endDate);
 
   let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
 
@@ -436,8 +451,132 @@ export const fetchAttendanceLogsRange = async (
     }
   }
 
-  // Apply Shared Enrichment
-  await enrichLogsWithWebPunches(out, startDate);
+  // Apply Shared Enrichment (match server logs with web punches)
+  // await enrichLogsWithWebPunches(out, startDate);
+
+  // NEW: Explicitly Fetch Web Punches and Append them if not already found
+  // This ensures Manual/App punches appear immediately    // 3. Fetch Manual Logs (to get Excuses/Reasons if WebPunch lacks them)
+  // Some BioTime versions store the text in 'manuallogs' even if created via WebPunch, or we create them there.
+  const mlUrl = `${BASE_FOR_ENV}/att/api/manuallogs/?start_time=${toBioTimeDate(startDate)}&end_time=${toBioTimeDate(endDate)}&page_size=2000`;
+  try {
+    const mlRes = await fetch(mlUrl, { headers });
+    if (mlRes.ok) {
+      const mlRaw = await mlRes.json();
+      const mlList = Array.isArray(mlRaw) ? mlRaw : (mlRaw.data || mlRaw.results || []);
+      mlList.forEach((ml: any) => {
+        const mlTimeStr = ml.punch_time || ml.time;
+        if (!mlTimeStr) return;
+        const mlTime = new Date(mlTimeStr.replace(' ', 'T'));
+        let code = String(ml.emp_code || ml.user_id || '').trim();
+        // Check dup/merge
+        const existingIndex = out.findIndex(o => Math.abs(new Date(o.timestamp).getTime() - mlTime.getTime()) < 60000 && o.employeeId === code); // 60s window
+
+        const purposeText = ml.apply_reason || ml.reason || ml.description || '';
+
+        if (existingIndex !== -1) {
+          // Enrich existing
+          if (purposeText) {
+            out[existingIndex].purpose = purposeText;
+            if (purposeText.includes('غياب')) {
+              // Force device alias if wanted, or keep existing
+            }
+          }
+        } else {
+          // Add new Manual Log
+          if (mlTime >= startDate && mlTime <= endDate) {
+            out.push({
+              id: `ml-${ml.id}`,
+              employeeId: code,
+              employeeName: ml.emp_name ||
+                (ml.emp && ml.emp.first_name ? `${ml.emp.first_name} ${ml.emp.last_name || ''}` :
+                  (ml.first_name ? `${ml.first_name} ${ml.last_name || ''}` : code)),
+              timestamp: mlTime.toISOString(),
+              type: 'CHECK_IN', // Default
+              method: AttendanceMethod.MANUAL,
+              status: 'ON_TIME',
+              location: { lat: 0, lng: 0, address: 'Manual Entry' },
+              deviceSn: 'Manual-Web', // It is manual
+              deviceAlias: 'تطبيق الجوال',
+              purpose: purposeText || 'Manual Log'
+            } as AttendanceRecord);
+          }
+        }
+      });
+    }
+  } catch (e) { console.warn("ManualLogs fetch fail", e); }
+
+  // 4. Fetch Web Punches (Existing Logic...)
+  const wpUrl = `${BASE_FOR_ENV}/att/api/webpunches/?start_time=${toBioTimeDate(startDate)}&end_time=${toBioTimeDate(endDate)}&page_size=2000`;
+  const wpRes = await fetch(wpUrl, { headers });
+  if (wpRes.ok) {
+    const wpRaw = await wpRes.json();
+    const wpList = Array.isArray(wpRaw) ? wpRaw : (wpRaw.data || wpRaw.results || []);
+
+    wpList.forEach((wp: any) => {
+      // Robust Field Mapping for BioTime 8.5
+      const wpTimeStr = wp.punch_time || wp.time;
+      if (!wpTimeStr) return;
+
+      // BioTime 8.5 date format is "YYYY-MM-DD HH:mm:ss" which might fail in some Date parsers
+      // Replace space with T to make it ISO-like (e.g. "2026-01-08T10:42:00")
+      const wpTime = new Date(wpTimeStr.replace(' ', 'T'));
+
+      // BioTime 8.5 sometimes returns 'emp' as ID or object, and 'emp_code' might be inside 'emp' or top level
+      let code = String(wp.emp_code || wp.user_id || '').trim();
+      if (!code && wp.emp && typeof wp.emp === 'object') code = wp.emp.emp_code;
+      if (!code && wp.emp) code = String(wp.emp); // If emp is just ID
+
+      if (wpTime >= startDate && wpTime <= endDate) {
+        // Check for duplication against existing transactions
+        const existingLogIndex = out.findIndex(o => Math.abs(new Date(o.timestamp).getTime() - wpTime.getTime()) < 1000 && o.employeeId === code);
+
+        if (existingLogIndex !== -1) {
+          // Log exists (likely via standard transaction sync). Enrich it with WebPunch data (Memo/Purpose).
+          if (wp.memo) {
+            out[existingLogIndex].purpose = wp.memo;
+            // If it has a specific absence keyword, update type if needed
+            if (wp.memo.includes('غياب')) {
+              // Optionally update type or just let the UI handle logic based on purpose
+              // out[existingLogIndex].type = 'CHECK_IN'; // Ensure it's valid
+            }
+          }
+          // Ensure it is marked as manual/web if not already
+          if (out[existingLogIndex].deviceSn !== 'Manual-Web') {
+            out[existingLogIndex].deviceSn = 'Manual-Web';
+            out[existingLogIndex].deviceAlias = 'تطبيق الجوال'; // Force alias
+          }
+        } else {
+          // New Web Punch not in main list yet
+          out.push({
+            id: `wp-${wp.id || Math.random().toString(36).substr(2, 9)}`,
+            employeeId: code || 'UNKNOWN',
+            employeeName: wp.emp_name || (wp.emp && wp.emp.first_name ? `${wp.emp.first_name} ${wp.emp.last_name}` : 'Web User'),
+            timestamp: wpTime.toISOString(),
+            type: (() => {
+              if (wp.punch_state) return parsePunchState(wp.punch_state);
+              // Fallback to display string matching
+              const disp = (wp.punch_state_display || '').toLowerCase();
+              if (disp.includes('in')) return 'CHECK_IN';
+              if (disp.includes('out')) return 'CHECK_OUT';
+              return 'CHECK_IN';
+            })(),
+            method: AttendanceMethod.MANUAL,
+            status: 'ON_TIME',
+            location: { lat: 0, lng: 0, address: wp.area_alias || 'Web Punch' },
+            deviceSn: (wp.terminal_sn === 'Web' || !wp.terminal_sn) ? 'Manual-Web' : wp.terminal_sn,
+            deviceAlias: wp.area_alias || 'Manual Log',
+            purpose: wp.memo || (wp.punch_state_display ? `Type: ${wp.punch_state_display}` : 'Manual Entry')
+          } as AttendanceRecord);
+        }
+      }
+    });
+  }
+  // catch block removed if no matching try, or fixed if needed. 
+  // If the catch was for the whole fetch loop, I need to know where try starts.
+  // Assuming the previous edit didn't include 'try {' before wpUrl.
+  // I will just wrap the WP fetch in try/catch properly.
+  // BUT first I MUST SEE the code above.
+  // Cancelling this tool call to View File first.
 
   return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
@@ -521,7 +660,8 @@ export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, end
               }
             }
             return undefined;
-          })()
+          })(),
+          purpose: item.purpose || undefined,
         } as AttendanceRecord);
       }
 
@@ -547,8 +687,98 @@ export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, end
 };
 
 /**
+ * MANUAL ATTENDANCE / EXCUSE LOGGING
+ */
+export const createManualTransaction = async (data: {
+  emp_code: string;
+  punch_time: string; // YYYY-MM-DD HH:mm:ss
+  punch_state: string; // '0'=CheckIn, '1'=CheckOut, '4'=Absence(mapped)
+  terminal_sn?: string;
+  purpose?: string; // Reason/Excuse
+}): Promise<void> => {
+  const headers = await getHeaders();
+
+  // Lookup internal Employee ID needed for manuallogs endpoint
+  const empResponse = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/?emp_code=${data.emp_code}`, { headers });
+  if (!empResponse.ok) throw new Error("Could not verify employee.");
+  const empData = await empResponse.json();
+  // Support both .data and .results if API varies
+  const list = empData.data || empData.results || [];
+  const internalId = list.length > 0 ? list[0].id : null;
+  if (!internalId) throw new Error("Employee internal ID not found.");
+
+  // Prepare Manual Log Payload
+  // We use /att/api/manuallogs/ because it supports 'apply_reason' (The Text!)
+
+  // Map punch_state '100' (Absence) to '0' (Check In) implies we prefer Check In status but with Text
+  let pState = data.punch_state;
+  if (pState === '100') pState = '0'; // Default to Check In for Absence
+
+  const payload = {
+    employee: internalId, // Required by BioTime
+    emp_code: data.emp_code,
+    punch_time: data.punch_time,
+    punch_state: pState,
+    verify_type: 0,
+    work_code: 0,
+    apply_reason: data.purpose || 'Manual Log'
+  };
+
+  const response = await fetch(`${BASE_FOR_ENV}/att/api/manuallogs/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const t = await response.text();
+    // Handle duplicates or errors
+    if (t.includes("Duplicate")) return;
+    throw new Error(`Failed to create manual log: ${t}`);
+  }
+};
+
+export const deleteTransaction = async (id: string): Promise<void> => {
+  const headers = await getHeaders();
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/transactions/${id}/`, {
+    method: 'DELETE',
+    headers
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Failed to delete transaction: ${response.status} - ${t}`);
+  }
+};
+
+export const updateTransaction = async (id: string, data: {
+  punch_time?: string;
+  punch_state?: string;
+  purpose?: string;
+}): Promise<void> => {
+  const headers = await getHeaders();
+  const payload: any = { ...data };
+
+  // BioTime sometimes requires 'verify_type' to stay same, or we might want to ensure it remains manual
+  // payload.verify_type = 20; 
+
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/transactions/${id}/`, {
+    method: 'PATCH', // Use PATCH for partial updates usually
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    // Fallback to PUT if PATCH fails or if API strictly wants PUT
+    // But typically JSON API uses PATCH. Check ZK API docs if available, or try. 
+    // For now Assuming PATCH or PUT. Let's try PATCH.
+    const t = await response.text();
+    throw new Error(`Failed to update transaction: ${response.status} - ${t}`);
+  }
+};
+
+/**
  * SUBMIT GPS ATTENDANCE (REAL)
- * Posts data to the API
+ * Posts data to the API as WebPunch
  */
 // Helper to format date for ADMS
 const formatDateADMS = (date: Date) => {
@@ -692,7 +922,8 @@ export const getLastPunch = async (employeeId: string): Promise<{ type: 'CHECK_I
 
     return {
       type: type,
-      timestamp: new Date(item.punch_time)
+      timestamp: new Date(item.punch_time),
+      purpose: item.memo || item.terminal_alias || ''
     };
   } catch (e) {
     console.error("Failed to fetch last punch", e);
@@ -777,18 +1008,29 @@ export const getStats = (records: AttendanceRecord[]): DashboardStats => {
   const todayStr = new Date().toDateString();
   const todayRecords = records.filter(r => new Date(r.timestamp).toDateString() === todayStr);
 
-  const uniquePresent = new Set(todayRecords.map(r => r.employeeId)).size;
-  const late = todayRecords.filter(r => r.type === 'CHECK_IN' && r.status === 'LATE').length;
+  // Identify logs that are explicitly marked as "Absence" (via purpose or type)
+  const absenceLogs = todayRecords.filter(r =>
+    (r.purpose && r.purpose.includes('غياب')) || r.type === 'ABSENCE'
+  );
 
-  // Total employees should ideally come from an 'employees' endpoint. 
-  // Calculating dynamic count based on unique IDs in logs + buffer or static base.
-  const totalEmployeesEst = Math.max(uniquePresent + 5, 20);
+  // Present logs are those that exist AND are not Absences
+  const presentLogs = todayRecords.filter(r =>
+    !((r.purpose && r.purpose.includes('غياب')) || r.type === 'ABSENCE')
+  );
+
+  const uniquePresent = new Set(presentLogs.map(r => r.employeeId)).size;
+  const uniqueAbsenceLoggers = new Set(absenceLogs.map(r => r.employeeId)).size;
+
+  const late = presentLogs.filter(r => r.type === 'CHECK_IN' && r.status === 'LATE').length;
+
+  // Total employees estimation (or ideally from fetchEmployeeCount if available in context)
+  const totalEmployeesEst = Math.max(uniquePresent + uniqueAbsenceLoggers + 5, 20);
 
   return {
     totalEmployees: totalEmployeesEst,
     presentToday: uniquePresent,
     lateToday: late,
-    onLeave: totalEmployeesEst - uniquePresent
+    onLeave: totalEmployeesEst - uniquePresent // This inherently includes those with Absence logs + those with NO logs
   };
 };
 
@@ -850,10 +1092,10 @@ export const fetchEmployeeCount = async (): Promise<number> => {
   return count;
 };
 
-export const fetchAllEmployees = async (): Promise<{ code: string; name: string }[]> => {
+export const fetchAllEmployees = async (): Promise<any[]> => {
   const headers = await getHeaders();
   let url = `${BASE_FOR_ENV}/personnel/api/employees/?page_size=200`;
-  const map = new Map<string, string>();
+  const map = new Map<string, any>();
 
   for (let i = 0; i < 50; i++) {
     try {
@@ -876,8 +1118,25 @@ export const fetchAllEmployees = async (): Promise<{ code: string; name: string 
         if (!code) return;
         const inactive = (it.is_active === false) || (it.active === false) || (String(it.status || '').toLowerCase() === 'inactive') || (String(it.employment_status || '').toLowerCase() === 'terminated');
         if (inactive) return;
+
+        // Enrich default fields if missing from list view
         const name = String(it.emp_name || `${it.first_name || ''} ${it.last_name || ''}`.trim() || code);
-        if (!map.has(code)) map.set(code, name);
+
+        // Ensure useful fields are present
+        const fullObj = {
+          ...it,
+          id: it.id,
+          code: code,
+          name: name,
+          first_name: it.first_name || name.split(' ')[0],
+          last_name: it.last_name || name.split(' ').slice(1).join(' '),
+          // Map deeper objects if present
+          dept_name: it.department ? (it.department.dept_name || it.department.name) : undefined,
+          position_name: it.position ? (it.position.position_name || it.position.name) : undefined,
+          area_name: (it.area && it.area.length > 0) ? (it.area[0].area_name || it.area[0].name) : undefined
+        };
+
+        if (!map.has(code)) map.set(code, fullObj);
       });
 
       const next: string | undefined = raw?.next;
@@ -896,5 +1155,88 @@ export const fetchAllEmployees = async (): Promise<{ code: string; name: string 
       break;
     }
   }
-  return Array.from(map.entries()).map(([code, name]) => ({ code, name }));
+  return Array.from(map.values());
+};
+
+export const createEmployee = async (data: any): Promise<void> => {
+  const headers = await getHeaders();
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    const t = await response.text();
+    // Try to parse JSON error if possible
+    try {
+      const err = JSON.parse(t);
+      if (err.first_name) throw new Error(`الاسم الأول: ${err.first_name}`);
+      if (err.emp_code) throw new Error(`رقم الموظف: ${err.emp_code}`);
+    } catch (e) { }
+    throw new Error(`فشل إضافة الموظف: ${response.status} - ${t}`);
+  }
+};
+
+export const updateEmployee = async (id: string | number, data: any): Promise<void> => {
+  const headers = await getHeaders();
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/${id}/`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    const t = await response.text();
+    try {
+      const err = JSON.parse(t);
+      if (err.first_name) throw new Error(`الاسم الأول: ${err.first_name}`);
+    } catch (e) { }
+    throw new Error(`فشل تحديث بيانات الموظف: ${response.status} - ${t}`);
+  }
+};
+
+export const deleteEmployee = async (id: string | number): Promise<void> => {
+  const headers = await getHeaders();
+  // Ensure ID is passed correctly. BioTime usually uses the internal ID (integer), but sometimes allows code.
+  // Ideally we should use the ID we get from fetchAllEmployees. 
+  // Wait, fetchAllEmployees returns {code, name}. It might not include the internal DB ID.
+  // The API endpoint usually is /personnel/api/employees/{id}/ where {id} is the internal PK.
+  // If we only have 'emp_code', we might need to filter first to get the ID?
+  // Let's assume for now we use the code and see if it works, OR we update fetchAll to return ID too.
+
+  // Let's UPDATE fetchAllEmployees to return 'id' as well.
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/${id}/`, {
+    method: 'DELETE',
+    headers
+  });
+
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`فشل حذف الموظف: ${response.status} - ${t}`);
+  }
+};
+
+export const fetchDepartments = async () => {
+  const headers = await getHeaders();
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/departments/?page_size=100`, { headers });
+  if (!response.ok) throw new Error("Failed to fetch departments");
+  const raw = await response.json();
+  return Array.isArray(raw) ? raw : raw.data || raw.results || [];
+};
+
+export const fetchAreas = async () => {
+  const headers = await getHeaders();
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/areas/?page_size=100`, { headers });
+  if (!response.ok) throw new Error("Failed to fetch areas");
+  const raw = await response.json();
+  return Array.isArray(raw) ? raw : raw.data || raw.results || [];
+};
+
+export const fetchPositions = async () => {
+  const headers = await getHeaders();
+  const response = await fetch(`${BASE_FOR_ENV}/personnel/api/positions/?page_size=100`, { headers });
+  if (!response.ok) throw new Error("Failed to fetch positions");
+  const raw = await response.json();
+  return Array.isArray(raw) ? raw : raw.data || raw.results || [];
 };

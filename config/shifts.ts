@@ -73,16 +73,7 @@ export const DEVICE_RULES: DeviceRule[] = [
         ],
         aliasOverride: 'فرع الدمام'
     },
-    // 6. القسم النسائي (Ladies Section)
-    // TODO: Future Requirement - Dynamic weekly shift scheduling (Admin will define morning/evening staff weekly)
-    {
-        matcher: (d) => (d.alias || '').includes('نسائي') || (d.alias || '').toLowerCase().includes('ladies'),
-        shifts: [
-            { start: '08:00', end: '15:10' },
-            { start: '14:50', end: '22:00' }
-        ],
-        aliasOverride: 'القسم النسائي'
-    },
+
     // 7. الرياض المعرض (Riyadh Showroom)
     {
         matcher: (d) => (d.alias || '').includes('الرياض') || (d.alias || '').includes('المعرض'),

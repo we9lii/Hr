@@ -14,6 +14,7 @@ import { Clock, CheckCircle, XCircle, RefreshCw, Users as UsersIcon, Sparkles, W
 import ModernDashboard from './components/ModernDashboard';
 import DeviceManager from './components/DeviceManager';
 import LiveBiometricLogs from './components/LiveBiometricLogs';
+import Employees from './components/Employees';
 
 const App: React.FC = () => {
   // Auth State
@@ -676,6 +677,8 @@ const App: React.FC = () => {
             {activeTab === 'biometric' && <LiveBiometricLogs employees={employeesIndex} settings={settings} />}
 
             {activeTab === 'locations' && <LocationManager />}
+
+            {activeTab === 'employees' && <Employees />}
 
             {selectedEmployeeId && (
               <EmployeeProfileModal

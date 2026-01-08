@@ -40,6 +40,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
   const [lastPunch, setLastPunch] = useState<Date | null>(null);
   const [lastPunchType, setLastPunchType] = useState<PunchType | null>(null);
   const [lastPunchLocation, setLastPunchLocation] = useState<string | null>(null);
+  const [lastPunchPurpose, setLastPunchPurpose] = useState<string>('');
 
   // Manual Selection State
   const [selectedType, setSelectedType] = useState<PunchType>('CHECK_IN');
@@ -64,6 +65,8 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
         if (record) {
           setLastPunch(record.timestamp);
           setLastPunchType(record.type);
+          // @ts-ignore
+          setLastPunchPurpose(record.purpose || '');
 
           // Smart Switch Logic
           if (record.type === 'CHECK_IN') setSelectedType('CHECK_OUT');
@@ -447,7 +450,10 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
                   <div>
                     <p className="text-xs text-slate-400 font-bold mb-0.5">آخر هوية مسجلة</p>
                     <p className="text-sm font-bold text-slate-200">
-                      تم {getPunchDetails(lastPunchType).label} {lastPunchLocation && ` في ${lastPunchLocation}`}
+                      {(lastPunchPurpose && lastPunchPurpose.includes('غياب'))
+                        ? <span className="text-red-400">تم تسجيل غياب ({lastPunchPurpose})</span>
+                        : <>تم {getPunchDetails(lastPunchType).label} {lastPunchLocation && ` في ${lastPunchLocation}`}</>
+                      }
                     </p>
                   </div>
                 </div>

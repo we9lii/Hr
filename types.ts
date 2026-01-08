@@ -50,6 +50,7 @@ export interface AttendanceRecord {
   deviceSn?: string;
   deviceAlias?: string;
   accuracy?: number;
+  purpose?: string; // Reason/Excuse for manual logs
 }
 
 export interface Device {

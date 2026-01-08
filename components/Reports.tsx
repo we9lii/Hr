@@ -436,6 +436,8 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
   // Optimized to minimize Date object creation
   const calculateDelay = (log: AttendanceRecord) => {
     if (log.type !== 'CHECK_IN') return 0;
+    // Absences (even if marked as CHECK_IN status) should not count as Late Delay
+    if (log.purpose && log.purpose.includes('غياب')) return 0;
 
     // Resolve config from Code (Static Rules)
     const deviceConfig = getDeviceConfig({
@@ -944,6 +946,11 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
           isAbsent: false
         };
         dailyMap.set(key, record);
+      }
+
+      // Explicit Absence Check
+      if (log.purpose && log.purpose.includes('غياب')) {
+        record.isAbsent = true;
       }
 
       if (log.type === 'CHECK_IN') {
@@ -1801,11 +1808,13 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                               ) : <span className="text-[9px] md:text-[11px] text-slate-500 whitespace-nowrap">لم يخرج</span>}
                             </div>
                           ) : (
-                            <span className={`px-2 py-0.5 md:px-3 md:py-1.5 rounded-lg text-[9px] md:text-[10px] font-bold border whitespace-nowrap ${log.type === 'CHECK_IN'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            <span className={`px-2 py-0.5 md:px-3 md:py-1.5 rounded-lg text-[9px] md:text-[10px] font-bold border whitespace-nowrap ${(log.purpose && log.purpose.includes('غياب'))
+                              ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                              : log.type === 'CHECK_IN'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                               }`}>
-                              {log.type === 'CHECK_IN' ? 'دخول' : 'خروج'}
+                              {(log.purpose && log.purpose.includes('غياب')) ? 'غياب' : log.type === 'CHECK_IN' ? 'دخول' : 'خروج'}
                             </span>
                           )}
                         </td>
