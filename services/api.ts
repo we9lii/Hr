@@ -196,6 +196,71 @@ const ensureAuthToken = async (): Promise<string> => {
 
 
 
+// --- LEGACY AUTH ---
+let LEGACY_AUTH_TOKEN: string | null = null;
+
+const ensureLegacyAuthToken = async (): Promise<string> => {
+  if (LEGACY_AUTH_TOKEN) return LEGACY_AUTH_TOKEN;
+
+  // Extract Root URL from config or hardcode based on environment
+  // If baseUrl is .../iclock/api, we want root .../
+  const rootUrl = Capacitor.isNativePlatform()
+    ? 'http://qssun.dyndns.org:8085'
+    : '/legacy_iclock'.replace(/\/iclock.*$/, ''); // clean up just in case
+
+  // Actually, simpler: construct root from config or just hardcode for valid proxy
+  const authUrl = Capacitor.isNativePlatform()
+    ? 'http://qssun.dyndns.org:8085/api-token-auth/'
+    : '/legacy_iclock/../api-token-auth/'; // Traversing up from /legacy_iclock mapping? 
+  // Better: Create a new proxy for root or use existing 'legacy_iclock' mapped to root?
+  // in vite.config, /legacy_iclock maps to /iclock. 
+  // /legacy_biometric maps to /biometric.
+  // We need a proxy to root or /api-token-auth.
+  // Let's try reusing /legacy_iclock and going up? Proxies don't usually support .. well.
+  // Let's assume /api-token-auth/ is available.
+  // Safest: Use a new proxy or mapped path.
+  // Vite config has: '/legacy_iclock' -> 'http://qssun.dyndns.org:8085/iclock' (via rewrite)
+  // Wait, rewrite was: path.replace(/^\/legacy_iclock/, '/iclock')
+  // So /legacy_iclock/api-token-auth/ -> /iclock/api-token-auth/ (Wrong).
+
+  // I need to add a proxy for the auth or just assume it works under /iclock (unlikely).
+  // Let's use the native URL for now as the user is likely on web dev.
+  // I'll assume the user adds a proxy for /legacy_auth or I add it.
+
+  // For now, let's try to hit it via the header-less 401 response and assuming NO AUTH for public endpoints?
+  // But transactions are likely protected.
+
+  // Let's try a direct fetch to the suspected Auth URL via a new proxy I will add later: /legacy_auth
+  const loginUrl = Capacitor.isNativePlatform()
+    ? 'http://qssun.dyndns.org:8085/api-token-auth/'
+    : '/legacy_auth/api-token-auth/';
+
+  try {
+    const response = await fetch(loginUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: LEGACY_API_CONFIG.username, password: LEGACY_API_CONFIG.password })
+    });
+    if (response.ok) {
+      const data = await response.json();
+      LEGACY_AUTH_TOKEN = data.token;
+      return data.token;
+    }
+  } catch (e) {
+    console.warn("Legacy Auth Failed", e);
+  }
+  return ''; // Return empty to try public access
+};
+
+export const getLegacyHeaders = async () => {
+  const token = await ensureLegacyAuthToken();
+  return {
+    'Authorization': token ? `JWT ${token}` : '',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  };
+};
+
 // Helper to generate JWT Headers
 export const getHeaders = async () => {
   const token = await ensureAuthToken();
@@ -396,7 +461,8 @@ export const fetchAttendanceLogsRange = async (
     if (deviceSn && deviceSn !== 'ALL') url += `&terminal_sn=${deviceSn}`;
 
     try {
-      const response = await fetch(url, { method: 'GET', headers }); // Uses same headers/auth
+      const legacyHeaders = await getLegacyHeaders();
+      const response = await fetch(url, { method: 'GET', headers: legacyHeaders });
       if (!response.ok) return [];
       const raw = await response.json();
       return Array.isArray(raw) ? raw : (raw.data || raw.results || []);

@@ -61,6 +61,12 @@ export default defineConfig(({ mode }) => {
           secure: false,
           rewrite: (path) => path.replace(/^\/legacy_biometric/, '/biometric')
         },
+        '/legacy_auth': {
+          target: 'http://qssun.dyndns.org:8085',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/legacy_auth/, '')
+        },
         '/local_iclock': {
           target: 'http://localhost:3000',
           changeOrigin: true,
