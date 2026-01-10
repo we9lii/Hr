@@ -194,6 +194,14 @@ const ensureAuthToken = async (): Promise<string> => {
   return AUTH_TOKEN;
 };
 
+export const API_CONFIG = {
+  baseUrl: Capacitor.isNativePlatform() ? 'https://qssun.solar/api' : '/biometric_api'
+};
+
+export const LEGACY_API_CONFIG = {
+  baseUrl: Capacitor.isNativePlatform() ? 'http://qssun.dyndns.org:8085' : '/legacy_iclock'
+};
+
 // Helper to generate JWT Headers
 export const getHeaders = async () => {
   const token = await ensureAuthToken();
