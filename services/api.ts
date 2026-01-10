@@ -171,8 +171,28 @@ export const LEGACY_API_CONFIG = {
   username: 'admin',
   password: 'Admin@123',
 };
+// SECURITY API
+const SECURITY_API_URL = 'https://qssun.solar';
 
-// --- LEGACY PROXY HELPER ---
+let AUTH_TOKEN: string | null = null;
+
+const ensureAuthToken = async (): Promise<string> => {
+  if (AUTH_TOKEN) return AUTH_TOKEN;
+  const response = await fetch(`${BASE_FOR_ENV}/jwt-api-token-auth/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: API_CONFIG.username, password: API_CONFIG.password })
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Auth Error: ${response.status} - ${t}`);
+  }
+  const data = await response.json();
+  AUTH_TOKEN = data?.token || null;
+  if (!AUTH_TOKEN) throw new Error('Auth token missing');
+  return AUTH_TOKEN;
+};
+
 // Routes requests through the secure PHP proxy to avoid Mixed Content errors on Web
 export const fetchLegacyProxy = async (path: string, options: RequestInit = {}) => {
   if (Capacitor.isNativePlatform()) {
