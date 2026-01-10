@@ -162,12 +162,13 @@ export const API_CONFIG = {
 };
 
 // Legacy API Configuration (Old Server - Django/ZKTeco)
-const LEGACY_BASE_URL = Capacitor.isNativePlatform()
-  ? 'http://qssun.dyndns.org:8085/iclock/api'
-  : '/legacy_iclock/api';
+// Legacy API Configuration (Old Server - Django/ZKTeco)
+// NOTE: We use the absolute URL to avoid "Unexpected token <" errors on Prod (which happen when using relative paths like /legacy_iclock without a proxy).
+// On HTTPS Web, this might cause Mixed Content errors (HTTP vs HTTPS), which is a browser limitation.
+const LEGACY_BASE_URL = 'http://qssun.dyndns.org:8085/iclock/api';
 
 export const LEGACY_API_CONFIG = {
-  baseUrl: Capacitor.isNativePlatform() ? 'http://qssun.dyndns.org:8085/iclock/api' : '/legacy_iclock/api',
+  baseUrl: 'http://qssun.dyndns.org:8085/iclock/api',
   username: 'admin',
   password: 'Admin@123',
 };

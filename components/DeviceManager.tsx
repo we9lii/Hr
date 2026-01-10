@@ -69,9 +69,7 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
             // 1. Fetch from LEGACY (Proxy) using the correct 'personnel' endpoint
             const headers = await getHeaders(); // Use shared auth logic
 
-            const legacyUrl = Capacitor.isNativePlatform()
-                ? 'http://qssun.dyndns.org:8085/personnel/api/employees/?page_size=2000'
-                : '/legacy_personnel/api/employees/?page_size=2000';
+            const legacyUrl = 'http://qssun.dyndns.org:8085/personnel/api/employees/?page_size=2000';
 
             const legacyRes = await fetch(legacyUrl, {
                 headers // Use headers with JWT
@@ -133,9 +131,9 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                 for (const path of validPaths) {
                     let tryUrl = '';
                     if (path.startsWith('/personnel')) {
-                        tryUrl = Capacitor.isNativePlatform() ? `http://qssun.dyndns.org:8085${path}` : `/legacy_personnel${path.replace('/personnel', '')}`;
+                        tryUrl = `http://qssun.dyndns.org:8085${path}`;
                     } else {
-                        tryUrl = Capacitor.isNativePlatform() ? `http://qssun.dyndns.org:8085${path}` : `/legacy_biometric${path.replace('/biometric', '').replace('/api', '')}`;
+                        tryUrl = `http://qssun.dyndns.org:8085${path}`;
                     }
 
                     try {
