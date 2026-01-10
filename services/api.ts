@@ -954,31 +954,36 @@ export const getStats = (records: AttendanceRecord[]): DashboardStats => {
 };
 
 export const fetchDevices = async (): Promise<DeviceInfo[]> => {
-  const headers = await getHeaders();
-  // We reuse biometric_stats.php (it returns 'devices', 'logs', 'users')
-  // This avoids needing 'terminals.php'
-  const response = await fetch(`${API_CONFIG.baseUrl}/biometric_stats.php`, {
-    method: 'GET',
-    headers
-  });
-  if (!response.ok) {
-    const t = await response.text();
-    throw new Error(`Server Error: ${response.status} - ${t}`);
-  }
-  const json = await response.json();
-  const list = Array.isArray(json.devices) ? json.devices : [];
+  try {
+    const headers = await getLegacyAuthHeaders();
+    // Use Legacy API for Terminals
+    const path = '/iclock/api/terminals/?page_size=200';
+    const response = await fetchLegacyProxy(path, { method: 'GET', headers });
 
-  return list.map((it: any) => ({
-    id: String(it.id || it.serial_number),
-    sn: String(it.serial_number || it.sn),
-    alias: it.device_name || it.alias || undefined,
-    areaName: undefined, // biometric_stats might not have area info, can be enriched if needed
-    lastActivity: it.last_activity || undefined
-  }));
+    if (!response.ok) {
+      console.warn(`Legacy Devices Fetch Failed: ${response.status}`);
+      return [];
+    }
+
+    const raw = await response.json();
+    const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+
+    return list.map((it: any) => ({
+      id: String(it.id || it.serial_number),
+      sn: String(it.serial_number || it.sn),
+      alias: it.alias || it.device_name || `Device ${it.sn}`,
+      areaName: it.area_name || it.area_alias || undefined,
+      lastActivity: it.last_activity || undefined,
+      status: it.state // Some versions return status/state
+    }));
+  } catch (e) {
+    console.warn("fetchDevices Error:", e);
+    return [];
+  }
 };
 
 export const fetchDeviceEmployees = async (terminalSn: string): Promise<{ empCode: string; empName: string }[]> => {
-  const headers = await getHeaders();
+  const headers = await getLegacyAuthHeaders();
   const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?page_size=1000&ordering=-id&terminal_sn=${terminalSn}`, {
     method: 'GET',
     headers
