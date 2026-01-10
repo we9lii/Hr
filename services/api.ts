@@ -400,6 +400,16 @@ export const fetchAttendanceLogsRange = async (
     }
   };
 
+  // Helper for Legacy Basic Auth
+  const getLegacyAuthHeaders = () => {
+    const credentials = btoa(`${LEGACY_API_CONFIG.username}:${LEGACY_API_CONFIG.password}`);
+    return {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+  };
+
   // --- 2. Fetch from LEGACY Server (Old ZKTeco) ---
   const fetchLegacyLogs = async () => {
     // We use the Proxy Helper to ensure this works on Web (HTTPS)
@@ -408,7 +418,9 @@ export const fetchAttendanceLogsRange = async (
     if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
 
     try {
-      const response = await fetchLegacyProxy(path, { method: 'GET', headers: await getHeaders() });
+      // Use Basic Auth for Legacy (Direct or via Proxy)
+      const headers = getLegacyAuthHeaders();
+      const response = await fetchLegacyProxy(path, { method: 'GET', headers });
       if (!response.ok) return [];
       const raw = await response.json();
       return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
@@ -433,7 +445,8 @@ export const fetchAttendanceLogsRange = async (
   if (newResult.status === 'fulfilled') {
     newLogsRaw = newResult.value;
   } else {
-    console.warn("New API (biometric_stats) failed, but continuing with Legacy...", newResult.reason);
+    // Silent fail for New Server as per user request to focus on Legacy
+    console.debug("New API (biometric_stats) skipped/failed.", newResult.reason);
   }
 
   if (legacyResult.status === 'fulfilled') {
