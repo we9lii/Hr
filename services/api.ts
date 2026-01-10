@@ -156,7 +156,7 @@ const BASE_FOR_ENV = Capacitor.isNativePlatform() ? 'https://hr-bnyq.onrender.co
 
 // Real API Configuration (New Server - Custom PHP)
 export const API_CONFIG = {
-  baseUrl: `${BASE_FOR_ENV}/api`, // Points to valid PHP files on qssun.solar
+  baseUrl: Capacitor.isNativePlatform() ? 'https://qssun.solar/api' : '/biometric_api',
   username: 'admin',
   password: 'Admin@123',
 };
@@ -167,8 +167,8 @@ const LEGACY_BASE_URL = Capacitor.isNativePlatform()
   : '/legacy_iclock/api';
 
 export const LEGACY_API_CONFIG = {
-  baseUrl: LEGACY_BASE_URL,
-  username: 'admin', // Assuming same creds or not needed for GET if public/cookie based
+  baseUrl: Capacitor.isNativePlatform() ? 'http://qssun.dyndns.org:8085/iclock/api' : '/legacy_iclock/api',
+  username: 'admin',
   password: 'Admin@123',
 };
 
@@ -194,13 +194,7 @@ const ensureAuthToken = async (): Promise<string> => {
   return AUTH_TOKEN;
 };
 
-export const API_CONFIG = {
-  baseUrl: Capacitor.isNativePlatform() ? 'https://qssun.solar/api' : '/biometric_api'
-};
 
-export const LEGACY_API_CONFIG = {
-  baseUrl: Capacitor.isNativePlatform() ? 'http://qssun.dyndns.org:8085' : '/legacy_iclock'
-};
 
 // Helper to generate JWT Headers
 export const getHeaders = async () => {
