@@ -185,6 +185,12 @@ const Employees: React.FC = () => {
     const handleManualSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // VALIDATION: Employee is required
+        if (!manualData.emp_code) {
+            alert('⚠️ يجب اختيار موظف للعملية.');
+            return;
+        }
+
         // VALIDATION: If Absence (State 4), Reason is mandatory
         if (manualData.punch_state === '4' && !manualData.purpose.trim()) {
             alert('⚠️ يجب كتابة سبب الغياب عند اختيار حالة "غياب".');

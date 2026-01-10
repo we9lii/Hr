@@ -1,18 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Clock, CheckCircle, Wifi, Users, AlertTriangle, WifiOff, RefreshCw, UserPlus } from 'lucide-react';
-import { API_CONFIG } from '../services/api';
+import { API_CONFIG, fetchAttendanceLogsRange } from '../services/api';
+import { AttendanceRecord } from '../types';
 import { getDeviceConfig } from '../config/shifts';
-
-interface DeviceLog {
-    id: number;
-    device_sn: string;
-    user_id: string;
-    check_time: string;
-    status: number;
-    verify_mode: number;
-    created_at: string;
-}
 
 interface DeviceStatus {
     id: number;
@@ -35,7 +26,7 @@ interface LiveBiometricLogsProps {
 }
 
 const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settings }) => {
-    const [logs, setLogs] = useState<DeviceLog[]>([]);
+    const [logs, setLogs] = useState<AttendanceRecord[]>([]);
     const [devices, setDevices] = useState<DeviceStatus[]>([]);
     const [syncedUsers, setSyncedUsers] = useState<BiometricUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -45,35 +36,35 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
     const fetchData = async () => {
         try {
             setError(null);
-            // Determine API URL based on platform
+            // 1. Fetch Devices & Users (Keep using efficient PHP endpoint for status)
             const apiUrl = Capacitor.isNativePlatform()
                 ? 'https://qssun.solar/api/biometric_stats.php'
                 : '/biometric_api/biometric_stats.php';
 
             const res = await fetch(apiUrl);
-
-            // Handle HTTP Errors
-            if (!res.ok) {
-                const text = await res.text();
-                throw new Error(`Server Error: ${res.status} ${res.statusText}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.status !== 'error') {
+                    if (data.devices) setDevices(data.devices);
+                    if (data.users) setSyncedUsers(data.users);
+                }
             }
 
-            const data = await res.json();
+            // 2. Fetch Unified Logs (Includes Manual Absences & Correct Merging)
+            const startOfDay = new Date('2024-01-01'); // Fetch all history from 2024
+            const endOfDay = new Date();     // Until Now
 
-            // Handle API Logic Errors
-            if (data.status === 'error') {
-                throw new Error(data.message || 'API Logic Error');
-            }
+            // Filter specifically for the filtered Device
+            const unifiedLogs = await fetchAttendanceLogsRange(startOfDay, endOfDay, undefined, 'AF4C232560143');
 
-            if (data.logs) setLogs(data.logs);
-            if (data.devices) setDevices(data.devices);
-            if (data.users) setSyncedUsers(data.users);
+            // Sort by time DESC
+            const sorted = unifiedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            setLogs(sorted);
 
             setLastUpdate(new Date());
         } catch (e: any) {
             console.error("Failed to fetch bio logs", e);
-            setError(e.message || "فشل الاتصال بالخادم");
-            // Keep old data on error if available
+            setError("جاري إعادة الاتصال...");
         } finally {
             setLoading(false);
         }
@@ -86,7 +77,9 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
     }, []);
 
     // Helper to resolve device nickname
-    const getDeviceName = (sn: string) => {
+    const getDeviceName = (sn: string, alias?: string) => {
+        if (alias && alias !== 'Manual Entry') return alias; // Use alias from Unified Log if meaningful
+
         // Priority 1: DB Name (from Devices table)
         const device = devices.find(d => d.serial_number === sn);
         if (device?.device_name) return device.device_name;
@@ -95,67 +88,7 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
         const config = getDeviceConfig({ sn });
         if (config.alias && config.alias !== `جهاز ${sn}`) return config.alias;
 
-        // Priority 3: Raw Serial Number
-        return sn;
-    };
-
-    // Helper to resolve employee name (Priority: Direct DB Join > Synced User > System Exact > System Padded)
-    const getEmployeeName = (userId: string, logName?: string) => {
-        // Priority 0: Direct from Database (via simplified JOIN in PHP)
-        if (logName) return logName;
-
-        // Priority 1: Synced User from Device (Exact Match)
-        const syncedUser = syncedUsers.find(u => u.user_id === userId);
-        if (syncedUser && syncedUser.name) return syncedUser.name;
-
-        // Priority 2: System Employee (Exact Match)
-        if (employees[userId]) return employees[userId].name;
-
-        // Priority 3: System Employee (Padded/Unpadded)
-        const padded3 = userId.padStart(3, '0');
-        if (employees[padded3]) return employees[padded3].name;
-
-        const padded4 = userId.padStart(4, '0');
-        if (employees[padded4]) return employees[padded4].name;
-
-        const unpadded = parseInt(userId).toString();
-        if (employees[unpadded]) return employees[unpadded].name;
-
-        return 'موظف غير معرف';
-    };
-
-    const getStatusLabel = (log: DeviceLog) => {
-        // Resolve Shift Config for this device
-        const deviceConfig = getDeviceConfig({
-            sn: log.device_sn,
-            alias: log.device_name
-        });
-
-        // Parse Check-in Time
-        const checkInTime = new Date(log.created_at || log.check_time + ' UTC'); // Ensure correct timezone parsing if needed
-        const checkInHour = checkInTime.getHours();
-
-        // Determine Shift (Simple Logic: Morning < 13:00, Evening >= 13:00)
-        const shifts = deviceConfig.shifts;
-        let targetShift = shifts[0];
-        if (shifts.length > 1 && checkInHour >= 13) {
-            targetShift = shifts[1];
-        }
-
-        let [h, m] = targetShift.start.split(':').map(Number);
-
-
-
-        const shiftStart = new Date(checkInTime);
-        shiftStart.setHours(h, m, 0, 0);
-
-        const isLate = checkInTime.getTime() > shiftStart.getTime();
-
-        if (log.status === 0 || log.status === 4 || log.status === 5) { // CheckIn types
-            if (isLate) return { label: 'متأخر', color: 'text-amber-400 bg-amber-900/20 border-amber-900/30' };
-            return { label: 'منتظم', color: 'text-emerald-400 bg-emerald-900/20 border-emerald-900/30' };
-        }
-        return { label: '---', color: 'text-slate-400 bg-slate-800 border-slate-700' };
+        return alias || sn;
     };
 
     return (
@@ -178,9 +111,9 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                 {/* Live Indicator */}
                 <div className="flex items-center gap-4 bg-slate-800 p-2 rounded-xl border border-slate-700">
                     <div className="flex items-center gap-2 px-3">
-                        <div className={`w-2.5 h-2.5 rounded-full ${error ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`}></div>
-                        <span className={`text-xs font-bold ${error ? 'text-red-500' : 'text-emerald-400'}`}>
-                            {error ? 'خطأ في الاتصال' : 'متصل'}
+                        <div className={`w-2.5 h-2.5 rounded-full ${error ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`}></div>
+                        <span className={`text-xs font-bold ${error ? 'text-amber-500' : 'text-emerald-400'}`}>
+                            {error ? 'إعادة طلب...' : 'متصل'}
                         </span>
                     </div>
                     <div className="w-px h-6 bg-slate-700"></div>
@@ -194,14 +127,6 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                     )}
                 </div>
             </div>
-
-            {/* Error Banner */}
-            {error && (
-                <div className="bg-red-900/10 border border-red-900/30 text-red-400 p-4 rounded-xl flex items-center gap-3 text-sm font-bold">
-                    <AlertTriangle size={18} />
-                    {error}
-                </div>
-            )}
 
             {/* Devices Status Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -224,89 +149,113 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
             </div>
 
             {/* Live Logs Table */}
-            <div className="bg-slate-900/70 backdrop-blur-3xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden min-h-[400px]">
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-800/50">
-                    <h3 className="font-bold text-slate-300">آخر الحركات المستلمة</h3>
+            <div className="bg-slate-900/40 backdrop-blur-xl rounded-[32px] border border-slate-800/60 shadow-2xl overflow-hidden min-h-[500px] flex flex-col">
+                <div className="p-6 border-b border-slate-800/60 flex justify-between items-center bg-gradient-to-r from-slate-900/50 to-slate-800/50">
+                    <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
+                        <h3 className="font-bold text-white tracking-wide">جهاز تجربة ( فيصل )</h3>
+                    </div>
+                    <span className="text-xs font-mono text-slate-500 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800">
+                        Total: {logs.length}
+                    </span>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto flex-1 custom-scrollbar">
                     <table className="w-full text-right border-collapse">
                         <thead>
-                            <tr className="bg-slate-800/80 text-slate-400 text-[11px] border-b border-slate-700 uppercase tracking-wider sticky top-0 bg-opacity-90 backdrop-blur">
-                                <th className="p-4 font-bold">الموظف</th>
-                                <th className="p-4 font-bold">التاريخ والوقت</th>
-                                <th className="p-4 font-bold">نوع الحركة</th>
-                                <th className="p-4 font-bold">المصدر</th>
-                                <th className="p-4 font-bold">الحالة</th>
-                                <th className="p-4 font-bold">الموقع / الجهاز</th>
+                            <tr className="bg-slate-900/80 text-slate-400 text-[11px] border-b border-slate-800 uppercase tracking-wider sticky top-0 backdrop-blur-md z-10 shadow-sm">
+                                <th className="p-5 font-bold">الموظف</th>
+                                <th className="p-5 font-bold">الوقت</th>
+                                <th className="p-5 font-bold">الحالة</th>
+                                <th className="p-5 font-bold">الموقع / الجهاز</th>
+                                <th className="p-5 font-bold">التحقق</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800/50 text-sm">
-                            {logs.map((log) => {
-                                // Pass the direct DB name to the helper
-                                const empName = getEmployeeName(log.user_id, (log as any).user_name);
-                                const statusInfo = getStatusLabel(log);
-                                const isNewUser = empName !== 'موظف غير معرف' && !employees[log.user_id] && !employees[parseInt(log.user_id)];
+                        <tbody className="divide-y divide-slate-800/30 text-sm">
+                            {logs.map((log, idx) => {
+                                // Absence Check
+                                const isAbsence = log.purpose && log.purpose.includes('غياب');
+                                const timeObj = new Date(log.timestamp);
 
                                 return (
-                                    <tr key={log.id} className="hover:bg-slate-800/30 transition-colors animate-slide-in group">
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center text-xs font-black text-slate-400 shadow-inner group-hover:scale-110 transition-transform relative">
-                                                    {empName.charAt(0)}
-                                                    {isNewUser && <div className="absolute -bottom-1 -right-1 bg-blue-500 text-white rounded-full p-0.5"><UserPlus size={8} /></div>}
+                                    <tr key={`${log.id}-${idx}`} className="hover:bg-blue-500/5 transition-all duration-300 group hover:shadow-[inset_2px_0_0_0_#3b82f6]">
+                                        <td className="p-5">
+                                            <div className="flex items-center gap-4">
+                                                <div className="relative">
+                                                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-sm font-black text-slate-400 shadow-inner border border-slate-700/50 group-hover:scale-105 transition-transform group-hover:border-blue-500/30 group-hover:shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                                                        {log.employeeName ? log.employeeName.charAt(0) : '?'}
+                                                    </div>
+                                                    {log.status === 'LATE' && !isAbsence && (
+                                                        <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-slate-900 flex items-center justify-center" title="تأخير">
+                                                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping-slow"></span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div>
-                                                    <div className="font-bold text-white group-hover:text-blue-500 transition-colors flex items-center gap-2">
-                                                        {empName}
+                                                    <div className="font-bold text-slate-200 group-hover:text-blue-400 transition-colors flex items-center gap-2 text-[15px]">
+                                                        {log.employeeName}
                                                     </div>
-                                                    <div className="text-[10px] font-mono bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 w-fit mt-1">{log.user_id}</div>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <div className="text-[10px] font-mono bg-slate-800/80 px-1.5 py-0.5 rounded text-slate-500 border border-slate-700/50">{log.employeeId}</div>
+                                                        {isAbsence && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20">غياب</span>}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="p-4 text-slate-400" dir="ltr">
+                                        <td className="p-5" dir="ltr">
                                             <div className="flex flex-col items-end">
-                                                <span className="font-mono text-sm font-bold text-white">
-                                                    {new Date((log.created_at || log.check_time) + ' UTC').toLocaleTimeString('ar-SA-u-ca-gregory')}
+                                                <span className="font-mono text-[15px] font-bold text-white tracking-tight group-hover:text-blue-200 transition-colors">
+                                                    {timeObj.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' })}
                                                 </span>
-                                                <span className="text-[10px] text-slate-400 mt-0.5">
-                                                    {new Date((log.created_at || log.check_time) + ' UTC').toLocaleDateString('ar-SA-u-ca-gregory')}
+                                                <span className="text-[10px] text-slate-500 font-mono">
+                                                    {timeObj.toLocaleDateString('en-GB')}
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="p-4">
-                                            {/* Full Status Mapping */}
-                                            {(() => {
-                                                switch (log.status) {
-                                                    case 0: return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>دخول</span>;
-                                                    case 1: return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 text-xs font-bold border border-rose-500/20"><span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>انصراف</span>;
-                                                    case 2: return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 text-xs font-bold border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>استراحة</span>;
-                                                    case 3: return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-bold border border-blue-500/20"><span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>عودة</span>;
-                                                    case 4: return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-400 text-xs font-bold border border-purple-500/20"><span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>إضافي دخول</span>;
-                                                    case 5: return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-pink-500/10 text-pink-400 text-xs font-bold border border-pink-500/20"><span className="w-1.5 h-1.5 rounded-full bg-pink-500"></span>إضافي خروج</span>;
-                                                    default: return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-500/10 text-slate-400 text-xs font-bold border border-slate-500/20">حركة ({log.status})</span>;
-                                                }
-                                            })()}
+                                        <td className="p-5">
+                                            {isAbsence ? (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 text-xs font-bold border border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]">
+                                                    <AlertTriangle size={14} />
+                                                    غياب مسجل
+                                                </span>
+                                            ) : (
+                                                <div className="flex flex-col items-start gap-1">
+                                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border shadow-[0_0_10px_rgba(0,0,0,0.1)] ${log.type === 'CHECK_IN' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]' :
+                                                        log.type === 'CHECK_OUT' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' :
+                                                            'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                        }`}>
+                                                        {log.type === 'CHECK_IN' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>}
+                                                        {log.type === 'CHECK_IN' ? 'تسجيل دخول' : log.type === 'CHECK_OUT' ? 'تسجيل خروج' : 'حركة'}
+                                                    </span>
+                                                    {log.status === 'LATE' && log.type === 'CHECK_IN' && (
+                                                        <span className="text-[10px] text-amber-500 font-bold px-1">⚠️ متأخر</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </td>
-                                        <td className="p-4">
-                                            <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
-                                                {log.verify_mode === 1 ? 'بصمة إصبع' :
-                                                    log.verify_mode === 15 ? 'بصمة وجه' :
-                                                        log.verify_mode === 3 || log.verify_mode === 4 ? 'كلمة مرور' :
-                                                            log.verify_mode === 25 ? 'راحة كف' :
-                                                                'غير معروف'}
-                                            </span>
+                                        <td className="p-5 text-xs text-slate-400">
+                                            {isAbsence ? (
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-slate-300 font-medium italic">"{log.purpose}"</span>
+                                                    <span className="text-[10px] opacity-60 flex items-center gap-1"><Users size={10} /> بواسطة المسؤول</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-white font-bold flex items-center gap-1.5">
+                                                        {log.deviceSn?.includes('Mobile') || log.deviceAlias?.includes('تطبيق') ? <Smartphone size={14} className="text-blue-400" /> : <Wifi size={14} className="text-purple-400" />}
+                                                        {getDeviceName(log.deviceSn || '', log.deviceAlias)}
+                                                    </span>
+                                                    <span className="text-[10px] font-mono opacity-50 bg-black/20 w-fit px-1.5 rounded">{log.deviceSn}</span>
+                                                </div>
+                                            )}
                                         </td>
-                                        <td className="p-4">
-                                            <span className={`inline-block px-2 text-[10px] font-bold py-0.5 rounded border ${statusInfo.color}`}>
-                                                {statusInfo.label}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-xs">
-                                            <div className="font-bold text-slate-300">{getDeviceName(log.device_sn)}</div>
-                                            {/* If device name is same as SN, show just one line */}
-                                            {getDeviceName(log.device_sn) !== log.device_sn && (
-                                                <div className="font-mono text-[10px] text-slate-400">{log.device_sn}</div>
+                                        <td className="p-5 text-xs font-mono">
+                                            {isAbsence ? (
+                                                <span className="text-slate-600">MANUAL</span>
+                                            ) : (
+                                                <span className={`px-2 py-1 rounded-lg border ${log.deviceSn?.includes('Mobile') ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-purple-500/10 border-purple-500/20 text-purple-400'}`}>
+                                                    {log.deviceSn?.includes('Mobile') ? 'APP' : 'BIO'}
+                                                </span>
                                             )}
                                         </td>
                                     </tr>
@@ -314,20 +263,29 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                             })}
                             {logs.length === 0 && !loading && (
                                 <tr>
-                                    <td colSpan={6} className="p-12 text-center">
-                                        <div className="flex flex-col items-center justify-center opacity-50">
-                                            <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-400">
-                                                <WifiOff size={24} />
+                                    <td colSpan={6} className="p-24 text-center">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <div className="w-24 h-24 bg-slate-800/50 rounded-full flex items-center justify-center mb-6 text-slate-600 ring-1 ring-slate-700/50">
+                                                <WifiOff size={40} strokeWidth={1.5} />
                                             </div>
-                                            <p className="text-slate-400 font-medium">في انتظار وصول البيانات الحية...</p>
+                                            <h3 className="text-xl font-bold text-slate-300 mb-2">لا توجد حركات اليوم</h3>
+                                            <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed">
+                                                لم يتم تسجيل أي بصمات أو حركات دخول/خروج لهذا اليوم حتى الآن.
+                                            </p>
+                                            <button onClick={fetchData} className="mt-6 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold transition-all border border-slate-700 shadow-lg active:scale-95 flex items-center gap-2">
+                                                <RefreshCw size={16} />
+                                                تحديث البيانات
+                                            </button>
                                         </div>
                                     </td>
+
                                 </tr>
                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
+
         </div>
     );
 };

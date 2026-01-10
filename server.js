@@ -135,19 +135,53 @@ const getRiyadhTime = () => {
 
 // 2. Command Check (Poll)
 let hasSentForceQuery = false; // Memory flag to send command once per server restart
+let pendingFingerprints = []; // Queue for fingerprint commands
+
+// Trigger Fingerprint Sync (Called by Frontend)
+app.get('/iclock/trigger_fp_sync', async (req, res) => {
+    try {
+        const { sn } = req.query;
+        console.log(`[ZKTeco] Triggering Fingerprint Sync for ${sn}...`);
+
+        // Fetch from PHP
+        const response = await fetch('https://qssun.solar/api/iclock/get_all_fingerprints.php');
+        const json = await response.json();
+
+        const templates = json.templates || [];
+        console.log(`[ZKTeco] Found ${templates.length} templates to sync.`);
+
+        // Populate Queue
+        pendingFingerprints = templates.map((t, idx) => {
+            // Command Format: DATA UPDATE FINGERTMP PIN=1 FID=0 TMP=...
+            // Using logic ID (idx + 1000) to avoid conflict
+            return `C:${1000 + idx}:DATA UPDATE FINGERTMP PIN=${t.user_id} FID=${t.finger_id} TMP=${t.template_data}`;
+        });
+
+        res.send({ status: 'success', count: pendingFingerprints.length });
+    } catch (e) {
+        console.error(e);
+        res.status(500).send({ status: 'error', message: e.message });
+    }
+});
 
 app.all('/iclock/getrequest', async (req, res) => {
     // console.log(`[ZKTeco] Heartbeat from ${req.query.SN}`);
 
-    // Attempt to force User Info Sync once
+    // Priority 1: Serve Fingerprint Commands (One by One)
+    if (pendingFingerprints.length > 0) {
+        const cmd = pendingFingerprints.shift();
+        console.log(`[ZKTeco] Sending FP Command (${pendingFingerprints.length} remaining): ${cmd.substring(0, 50)}...`);
+        return res.send(cmd);
+    }
+
+    // Priority 2: Force User Info Sync (Once)
     if (!hasSentForceQuery) {
         console.log(`[ZKTeco] Sending FORCE SYNC command to ${req.query.SN}`);
         hasSentForceQuery = true;
-        // Command ID: 1, Command: DATA QUERY USERINFO
         return res.send(`C:1:DATA QUERY USERINFO`);
     }
 
-    res.send(`OK\nDate=${getRiyadhTime()}`); // Keep device time synced to Riyadh Time
+    res.send(`OK\nDate=${getRiyadhTime()}`); // Keep device time synced
 });
 
 // 3. Command Response (When device finishes a command)

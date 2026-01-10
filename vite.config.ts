@@ -36,6 +36,36 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path.replace(/^\/biometric_api/, '')
+        },
+        '/api': {
+          target: 'https://qssun.solar/api',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api/, '')
+        },
+        '/legacy_iclock': {
+          target: 'http://qssun.dyndns.org:8085',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/legacy_iclock/, '/iclock')
+        },
+        '/legacy_personnel': {
+          target: 'http://qssun.dyndns.org:8085',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/legacy_personnel/, '/personnel')
+        },
+        '/legacy_biometric': {
+          target: 'http://qssun.dyndns.org:8085',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/legacy_biometric/, '/biometric')
+        },
+        '/local_iclock': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/local_iclock/, '/iclock')
         }
       }
     },

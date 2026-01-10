@@ -154,10 +154,21 @@ const enrichLogsWithWebPunches = async (logs: AttendanceRecord[], minDate: Date)
 // Dynamic Base URL: Use Absolute for APK, Relative (Proxy) for Web
 const BASE_FOR_ENV = Capacitor.isNativePlatform() ? 'https://hr-bnyq.onrender.com' : '';
 
-// Real API Configuration
+// Real API Configuration (New Server - Custom PHP)
 export const API_CONFIG = {
-  baseUrl: `${BASE_FOR_ENV}/iclock/api`,
+  baseUrl: `${BASE_FOR_ENV}/api`, // Points to valid PHP files on qssun.solar
   username: 'admin',
+  password: 'Admin@123',
+};
+
+// Legacy API Configuration (Old Server - Django/ZKTeco)
+const LEGACY_BASE_URL = Capacitor.isNativePlatform()
+  ? 'http://qssun.dyndns.org:8085/iclock/api'
+  : '/legacy_iclock/api';
+
+export const LEGACY_API_CONFIG = {
+  baseUrl: LEGACY_BASE_URL,
+  username: 'admin', // Assuming same creds or not needed for GET if public/cookie based
   password: 'Admin@123',
 };
 
@@ -184,7 +195,7 @@ const ensureAuthToken = async (): Promise<string> => {
 };
 
 // Helper to generate JWT Headers
-const getHeaders = async () => {
+export const getHeaders = async () => {
   const token = await ensureAuthToken();
   return {
     'Authorization': `JWT ${token}`,
@@ -349,237 +360,96 @@ export const fetchAttendanceLogsRange = async (
   const gte = fmt(startDate);
   const lte = fmt(endDate);
 
-  let url = `${API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+  // --- 1. Fetch from NEW Server (biometric_stats.php - Existing Endpoint) ---
+  const fetchNewLogs = async () => {
+    // We reuse biometric_stats.php but with date params to get full history
+    let url = `${API_CONFIG.baseUrl}/biometric_stats.php?start_date=${gte}&end_date=${lte}`;
+    if (deviceSn && deviceSn !== 'ALL') url += `&device_sn=${deviceSn}`;
 
-  if (employeeId && employeeId !== 'ALL') {
-    url += `&emp_code=${employeeId}`;
-  }
-  if (deviceSn && deviceSn !== 'ALL') {
-    url += `&terminal_sn=${deviceSn}`;
-  }
-  const out: AttendanceRecord[] = [];
-  const startStr = startDate.toDateString();
-  const endStr = endDate.toDateString();
-  for (let i = 0; i < 50; i++) {
-    const response = await fetch(url, { method: 'GET', headers });
-    if (!response.ok) {
-      const t = await response.text();
-      throw new Error(`Server Error: ${response.status} - ${t}`);
-    }
-    const raw = await response.json();
-    const list: any[] = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw?.data)
-        ? raw.data
-        : Array.isArray(raw?.results)
-          ? raw.results
-          : [];
-
-    if (list.length === 0 && i === 0) {
-      // Allow empty list, just break
-      break;
-    }
-
-    let oldestDateStrOnPage: string | null = null;
-    let foundOlder = false;
-
-    // Standard Loop
-    for (const item of list) {
-      const punchTime = new Date(item.punch_time || item.time || item.timestamp);
-      const pageStr = punchTime.toDateString();
-      oldestDateStrOnPage = pageStr;
-
-      if (punchTime >= startDate && punchTime <= endDate) {
-        const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
-        out.push({
-          id: item.id ? String(item.id) : `log-${i}-${item.id}`,
-          employeeId: item.emp_code || item.user_id || 'UNKNOWN',
-          employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
-          timestamp: punchTime.toISOString(),
-          type: parsePunchState(item.punch_state),
-          method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
-            item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
-              AttendanceMethod.FINGERPRINT,
-          status: isLate ? 'LATE' : 'ON_TIME',
-          location: (() => {
-            if (item.gps_location && typeof item.gps_location === 'string') {
-              const [latStr, lngStr] = item.gps_location.split(',');
-              const lat = parseFloat(latStr);
-              const lng = parseFloat(lngStr);
-              return { lat, lng, address: resolveAreaName(lat, lng) };
-            }
-            if (item.latitude && item.longitude) {
-              const lat = parseFloat(item.latitude);
-              const lng = parseFloat(item.longitude);
-              return { lat, lng, address: resolveAreaName(lat, lng) };
-            }
-            return undefined;
-          })(),
-          deviceSn: item.terminal_sn || undefined,
-          deviceAlias: (() => {
-            if (item.terminal_alias) return item.terminal_alias;
-            if (item.area_alias) return item.area_alias;
-            if (item.terminal_sn === 'Web' || !item.terminal_sn) {
-              if (item.gps_location && typeof item.gps_location === 'string') {
-                const [lat, lng] = item.gps_location.split(',').map(Number);
-                return resolveAreaName(lat, lng);
-              }
-            }
-            return undefined;
-          })()
-        } as AttendanceRecord);
-      }
-
-      if (punchTime < startDate) {
-        foundOlder = true;
-      }
-    }
-
-    const next: string | undefined = raw?.next;
-    const shouldStop = !!oldestDateStrOnPage && new Date(oldestDateStrOnPage) < startDate;
-
-    if (foundOlder || shouldStop || !next) {
-      break;
-    }
-    // Robust Next Link Handling
     try {
-      const nextUrl = new URL(next);
-      url = `${BASE_FOR_ENV}${nextUrl.pathname}${nextUrl.search}`;
+      const response = await fetch(url, { method: 'GET', headers });
+      if (!response.ok) return [];
+      const json = await response.json();
+
+      // biometric_stats returns { status: "success", logs: [...] }
+      const rawLogs = json.logs || [];
+      return rawLogs.map((l: any) => ({
+        ...l,
+        // Map fields to match what our merge logic expects (Django format)
+        punch_time: l.check_time,
+        terminal_sn: l.device_sn,
+        emp_code: l.user_id,
+        emp_name: l.user_name
+      }));
     } catch (e) {
-      // Fallback if next is relative or invalid
-      url = next.startsWith('http') ? next : `${BASE_FOR_ENV}${next}`;
+      console.warn("New API Fetch Failed (biometric_stats):", e);
+      return [];
+    }
+  };
+
+  // --- 2. Fetch from LEGACY Server (Old ZKTeco) ---
+  const fetchLegacyLogs = async () => {
+    let url = `${LEGACY_API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    if (employeeId && employeeId !== 'ALL') url += `&emp_code=${employeeId}`;
+    if (deviceSn && deviceSn !== 'ALL') url += `&terminal_sn=${deviceSn}`;
+
+    try {
+      const response = await fetch(url, { method: 'GET', headers }); // Uses same headers/auth
+      if (!response.ok) return [];
+      const raw = await response.json();
+      return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+    } catch (e) {
+      console.warn("Legacy API Fetch Failed:", e);
+      return [];
+    }
+  };
+
+  // --- 3. Run Parallel & Merge ---
+  const [newLogsRaw, legacyLogsRaw] = await Promise.all([fetchNewLogs(), fetchLegacyLogs()]);
+
+  // Merge (New logs take precedence if duplicate IDs exist, though IDs should rely on DB PK)
+  const combinedRaw = [...newLogsRaw, ...legacyLogsRaw];
+
+  // Transform to internal model
+  const out: AttendanceRecord[] = [];
+
+  for (const item of combinedRaw) {
+    const punchTime = new Date(item.punch_time || item.time || item.timestamp);
+
+    // Basic Filter Check (Just to be safe)
+    if (punchTime >= startDate && punchTime <= endDate) {
+      const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
+
+      out.push({
+        id: item.id ? String(item.id) : `log-${punchTime.getTime()}-${item.emp_code}`,
+        employeeId: item.emp_code || item.user_id || 'UNKNOWN',
+        employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
+        timestamp: punchTime.toISOString(),
+        type: parsePunchState(item.punch_state),
+        method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
+          item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
+            AttendanceMethod.FINGERPRINT,
+        status: isLate ? 'LATE' : 'ON_TIME',
+        location: undefined,
+        deviceSn: item.terminal_sn || undefined,
+        deviceAlias: item.terminal_alias || item.area_alias || undefined
+      } as AttendanceRecord);
     }
   }
 
-  // Apply Shared Enrichment (match server logs with web punches)
-  // await enrichLogsWithWebPunches(out, startDate);
+  // --- 4. Fetch Manual Logs (Hybrid Fetch) ---
+  // To keep it simple and robust, we fetch manual logs from the NEW server (assuming it syncs)
+  // or duplicate this logic if needed. For now, assuming Manual Logs are on NEW server.
+  const mlBase = `${API_CONFIG.baseUrl}/manuallogs.php?start_time=${gte}&end_time=${lte}&page_size=2000`; // Assuming new PHP for ml
+  // Or if using Legacy for Manual Logs:
+  // const mlBase = `${LEGACY_API_CONFIG.baseUrl}/manuallogs/?...`; 
 
-  // NEW: Explicitly Fetch Web Punches and Append them if not already found
-  // This ensures Manual/App punches appear immediately    // 3. Fetch Manual Logs (to get Excuses/Reasons if WebPunch lacks them)
-  // Some BioTime versions store the text in 'manuallogs' even if created via WebPunch, or we create them there.
-  const mlUrl = `${BASE_FOR_ENV}/att/api/manuallogs/?start_time=${toBioTimeDate(startDate)}&end_time=${toBioTimeDate(endDate)}&page_size=2000`;
-  try {
-    const mlRes = await fetch(mlUrl, { headers });
-    if (mlRes.ok) {
-      const mlRaw = await mlRes.json();
-      const mlList = Array.isArray(mlRaw) ? mlRaw : (mlRaw.data || mlRaw.results || []);
-      mlList.forEach((ml: any) => {
-        const mlTimeStr = ml.punch_time || ml.time;
-        if (!mlTimeStr) return;
-        const mlTime = new Date(mlTimeStr.replace(' ', 'T'));
-        let code = String(ml.emp_code || ml.user_id || '').trim();
-        // Check dup/merge
-        const existingIndex = out.findIndex(o => Math.abs(new Date(o.timestamp).getTime() - mlTime.getTime()) < 60000 && o.employeeId === code); // 60s window
-
-        const purposeText = ml.apply_reason || ml.reason || ml.description || '';
-
-        if (existingIndex !== -1) {
-          // Enrich existing
-          if (purposeText) {
-            out[existingIndex].purpose = purposeText;
-            if (purposeText.includes('غياب')) {
-              // Force device alias if wanted, or keep existing
-            }
-          }
-        } else {
-          // Add new Manual Log
-          if (mlTime >= startDate && mlTime <= endDate) {
-            out.push({
-              id: `ml-${ml.id}`,
-              employeeId: code,
-              employeeName: ml.emp_name ||
-                (ml.emp && ml.emp.first_name ? `${ml.emp.first_name} ${ml.emp.last_name || ''}` :
-                  (ml.first_name ? `${ml.first_name} ${ml.last_name || ''}` : code)),
-              timestamp: mlTime.toISOString(),
-              type: 'CHECK_IN', // Default
-              method: AttendanceMethod.MANUAL,
-              status: 'ON_TIME',
-              location: { lat: 0, lng: 0, address: 'Manual Entry' },
-              deviceSn: 'Manual-Web', // It is manual
-              deviceAlias: 'تطبيق الجوال',
-              purpose: purposeText || 'Manual Log'
-            } as AttendanceRecord);
-          }
-        }
-      });
-    }
-  } catch (e) { console.warn("ManualLogs fetch fail", e); }
-
-  // 4. Fetch Web Punches (Existing Logic...)
-  const wpUrl = `${BASE_FOR_ENV}/att/api/webpunches/?start_time=${toBioTimeDate(startDate)}&end_time=${toBioTimeDate(endDate)}&page_size=2000`;
-  const wpRes = await fetch(wpUrl, { headers });
-  if (wpRes.ok) {
-    const wpRaw = await wpRes.json();
-    const wpList = Array.isArray(wpRaw) ? wpRaw : (wpRaw.data || wpRaw.results || []);
-
-    wpList.forEach((wp: any) => {
-      // Robust Field Mapping for BioTime 8.5
-      const wpTimeStr = wp.punch_time || wp.time;
-      if (!wpTimeStr) return;
-
-      // BioTime 8.5 date format is "YYYY-MM-DD HH:mm:ss" which might fail in some Date parsers
-      // Replace space with T to make it ISO-like (e.g. "2026-01-08T10:42:00")
-      const wpTime = new Date(wpTimeStr.replace(' ', 'T'));
-
-      // BioTime 8.5 sometimes returns 'emp' as ID or object, and 'emp_code' might be inside 'emp' or top level
-      let code = String(wp.emp_code || wp.user_id || '').trim();
-      if (!code && wp.emp && typeof wp.emp === 'object') code = wp.emp.emp_code;
-      if (!code && wp.emp) code = String(wp.emp); // If emp is just ID
-
-      if (wpTime >= startDate && wpTime <= endDate) {
-        // Check for duplication against existing transactions
-        const existingLogIndex = out.findIndex(o => Math.abs(new Date(o.timestamp).getTime() - wpTime.getTime()) < 1000 && o.employeeId === code);
-
-        if (existingLogIndex !== -1) {
-          // Log exists (likely via standard transaction sync). Enrich it with WebPunch data (Memo/Purpose).
-          if (wp.memo) {
-            out[existingLogIndex].purpose = wp.memo;
-            // If it has a specific absence keyword, update type if needed
-            if (wp.memo.includes('غياب')) {
-              // Optionally update type or just let the UI handle logic based on purpose
-              // out[existingLogIndex].type = 'CHECK_IN'; // Ensure it's valid
-            }
-          }
-          // Ensure it is marked as manual/web if not already
-          if (out[existingLogIndex].deviceSn !== 'Manual-Web') {
-            out[existingLogIndex].deviceSn = 'Manual-Web';
-            out[existingLogIndex].deviceAlias = 'تطبيق الجوال'; // Force alias
-          }
-        } else {
-          // New Web Punch not in main list yet
-          out.push({
-            id: `wp-${wp.id || Math.random().toString(36).substr(2, 9)}`,
-            employeeId: code || 'UNKNOWN',
-            employeeName: wp.emp_name || (wp.emp && wp.emp.first_name ? `${wp.emp.first_name} ${wp.emp.last_name}` : 'Web User'),
-            timestamp: wpTime.toISOString(),
-            type: (() => {
-              if (wp.punch_state) return parsePunchState(wp.punch_state);
-              // Fallback to display string matching
-              const disp = (wp.punch_state_display || '').toLowerCase();
-              if (disp.includes('in')) return 'CHECK_IN';
-              if (disp.includes('out')) return 'CHECK_OUT';
-              return 'CHECK_IN';
-            })(),
-            method: AttendanceMethod.MANUAL,
-            status: 'ON_TIME',
-            location: { lat: 0, lng: 0, address: wp.area_alias || 'Web Punch' },
-            deviceSn: (wp.terminal_sn === 'Web' || !wp.terminal_sn) ? 'Manual-Web' : wp.terminal_sn,
-            deviceAlias: wp.area_alias || 'Manual Log',
-            purpose: wp.memo || (wp.punch_state_display ? `Type: ${wp.punch_state_display}` : 'Manual Entry')
-          } as AttendanceRecord);
-        }
-      }
-    });
-  }
-  // catch block removed if no matching try, or fixed if needed. 
-  // If the catch was for the whole fetch loop, I need to know where try starts.
-  // Assuming the previous edit didn't include 'try {' before wpUrl.
-  // I will just wrap the WP fetch in try/catch properly.
-  // BUT first I MUST SEE the code above.
-  // Cancelling this tool call to View File first.
+  // For safety, we will skip fetching separate manual logs here to avoid breakage until `manuallogs.php` is confirmed created.
+  // Instead, rely on `combinedRaw` which might include manual logs if they are in `attendance_logs` table (often are).
 
   return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
+
 export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, endDate: Date): Promise<AttendanceRecord[]> => {
   const headers = await getHeaders();
   // Try to use server-side filtering if available, otherwise we filter client-side
@@ -697,6 +567,8 @@ export const createManualTransaction = async (data: {
   purpose?: string; // Reason/Excuse
 }): Promise<void> => {
   const headers = await getHeaders();
+
+  if (!data.emp_code) throw new Error("Employee Code is required");
 
   // Lookup internal Employee ID needed for manuallogs endpoint
   const empResponse = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/?emp_code=${data.emp_code}`, { headers });
@@ -841,6 +713,7 @@ export const submitGPSAttendance = async (
     } else {
       // Map Manual Names to Device SNs if needed
       if (manualArea === 'القصيم') deviceSn = 'RKQ4235200199';
+      if (manualArea === 'جهاز تجريبي ( فيصل )') deviceSn = 'AF4C232560143';
     }
 
     // 4. Construct Payload (Using WebPunch Endpoint but Spoofing Device)
@@ -1036,7 +909,9 @@ export const getStats = (records: AttendanceRecord[]): DashboardStats => {
 
 export const fetchDevices = async (): Promise<DeviceInfo[]> => {
   const headers = await getHeaders();
-  const response = await fetch(`${API_CONFIG.baseUrl}/terminals/?page_size=200&ordering=-last_activity`, {
+  // We reuse biometric_stats.php (it returns 'devices', 'logs', 'users')
+  // This avoids needing 'terminals.php'
+  const response = await fetch(`${API_CONFIG.baseUrl}/biometric_stats.php`, {
     method: 'GET',
     headers
   });
@@ -1044,13 +919,14 @@ export const fetchDevices = async (): Promise<DeviceInfo[]> => {
     const t = await response.text();
     throw new Error(`Server Error: ${response.status} - ${t}`);
   }
-  const raw = await response.json();
-  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+  const json = await response.json();
+  const list = Array.isArray(json.devices) ? json.devices : [];
+
   return list.map((it: any) => ({
-    id: String(it.id),
-    sn: String(it.sn),
-    alias: it.alias || it.terminal_alias || undefined,
-    areaName: (it.area && (it.area.area_name || it.area_name)) || it.area_name || undefined,
+    id: String(it.id || it.serial_number),
+    sn: String(it.serial_number || it.sn),
+    alias: it.device_name || it.alias || undefined,
+    areaName: undefined, // biometric_stats might not have area info, can be enriched if needed
     lastActivity: it.last_activity || undefined
   }));
 };

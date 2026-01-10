@@ -8,17 +8,40 @@ header("Content-Type: application/json; charset=UTF-8");
 require_once 'db_connect.php'; // Ensure db_connect.php exists in same folder or adjust path
 
 try {
-    // 1. Fetch Latest 50 Logs with User Names
-    // JOIN with biometric_users to get the name directly from the DB
-    $logsSql = "SELECT 
-                    l.id, l.device_sn, l.user_id, l.check_time, l.status, l.verify_mode, l.created_at,
-                    u.name as user_name
-                FROM attendance_logs l 
-                LEFT JOIN biometric_users u ON l.user_id = u.user_id
-                ORDER BY l.check_time DESC 
-                LIMIT 50";
+    // 1. Log Fetching Logic (Dynamic: Latest 50 OR Date Range)
+    $startDate = $_GET['start_date'] ?? null;
+    $endDate = $_GET['end_date'] ?? null;
+    $deviceSn = $_GET['device_sn'] ?? null;
 
-    $stmt = $pdo->query($logsSql);
+    $sql = "SELECT 
+                l.id, l.device_sn, l.user_id, l.check_time, l.status, l.verify_mode, l.created_at,
+                u.name as user_name, l.check_time as punch_time, l.device_sn as terminal_sn
+            FROM attendance_logs l 
+            LEFT JOIN biometric_users u ON l.user_id = u.user_id
+            WHERE 1=1";
+
+    $params = [];
+
+    if ($startDate && $endDate) {
+        $sql .= " AND l.check_time BETWEEN ? AND ?";
+        $params[] = $startDate;
+        $params[] = $endDate;
+    }
+
+    if ($deviceSn) {
+        $sql .= " AND l.device_sn = ?";
+        $params[] = $deviceSn;
+    }
+
+    $sql .= " ORDER BY l.check_time DESC";
+
+    // Only limit if no date range is provided
+    if (!$startDate) {
+        $sql .= " LIMIT 50";
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 2. Fetch Devices Status
