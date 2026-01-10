@@ -176,6 +176,54 @@ const SECURITY_API_URL = 'https://qssun.solar';
 
 let AUTH_TOKEN: string | null = null;
 
+// --- LEGACY AUTHENTICATION (Token Based) ---
+let LEGACY_AUTH_TOKEN: string | null = null;
+
+export const ensureLegacyAuthToken = async (): Promise<string> => {
+  if (LEGACY_AUTH_TOKEN) return LEGACY_AUTH_TOKEN;
+
+  // Login to Legacy Server to get Token
+  const path = '/api-token-auth/';
+  const body = JSON.stringify({ username: LEGACY_API_CONFIG.username, password: LEGACY_API_CONFIG.password });
+
+  // Use fetchLegacyProxy so it works on Web too
+  const response = await fetchLegacyProxy(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body
+  });
+
+  if (!response.ok) {
+    throw new Error(`Legacy Auth Failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  LEGACY_AUTH_TOKEN = data?.token || null;
+  if (!LEGACY_AUTH_TOKEN) throw new Error("Legacy Token missing in response");
+  return LEGACY_AUTH_TOKEN;
+};
+
+// Helper for Legacy Headers (Prioritize Token, Fallback to Basic)
+export const getLegacyAuthHeaders = async () => {
+  try {
+    const token = await ensureLegacyAuthToken();
+    return {
+      'Authorization': `Token ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+  } catch (e) {
+    console.warn("Legacy Token Auth failed. Falling back to Basic.", e);
+    const credentials = btoa(`${LEGACY_API_CONFIG.username}:${LEGACY_API_CONFIG.password}`);
+    return {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+  }
+};
+
+
 const ensureAuthToken = async (): Promise<string> => {
   if (AUTH_TOKEN) return AUTH_TOKEN;
   const response = await fetch(`${BASE_FOR_ENV}/jwt-api-token-auth/`, {
@@ -373,44 +421,7 @@ export const fetchAttendanceLogsRange = async (
   const gte = fmt(startDate);
   const lte = fmt(endDate);
 
-  // --- 1. Fetch from NEW Server (biometric_stats.php - Existing Endpoint) ---
-  const fetchNewLogs = async () => {
-    // We reuse biometric_stats.php but with date params to get full history
-    let url = `${API_CONFIG.baseUrl}/biometric_stats.php?start_date=${gte}&end_date=${lte}`;
-    if (deviceSn && deviceSn !== 'ALL') url += `&device_sn=${deviceSn}`;
-
-    try {
-      const response = await fetch(url, { method: 'GET', headers });
-      if (!response.ok) return [];
-      const json = await response.json();
-
-      // biometric_stats returns { status: "success", logs: [...] }
-      const rawLogs = json.logs || [];
-      return rawLogs.map((l: any) => ({
-        ...l,
-        // Map fields to match what our merge logic expects (Django format)
-        punch_time: l.check_time,
-        terminal_sn: l.device_sn,
-        emp_code: l.user_id,
-        emp_name: l.user_name
-      }));
-    } catch (e) {
-      console.warn("New API Fetch Failed (biometric_stats):", e);
-      return [];
-    }
-  };
-
-  // Helper for Legacy Basic Auth
-  const getLegacyAuthHeaders = () => {
-    const credentials = btoa(`${LEGACY_API_CONFIG.username}:${LEGACY_API_CONFIG.password}`);
-    return {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    };
-  };
-
-  // --- 2. Fetch from LEGACY Server (Old ZKTeco) ---
+  // --- 1. Cleaned Up Legacy Fetch Logic (Direct to Source) ---
   const fetchLegacyLogs = async () => {
     // We use the Proxy Helper to ensure this works on Web (HTTPS)
     let path = `/iclock/api/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
@@ -418,10 +429,15 @@ export const fetchAttendanceLogsRange = async (
     if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
 
     try {
-      // Use Basic Auth for Legacy (Direct or via Proxy)
-      const headers = getLegacyAuthHeaders();
+      // Use Legacy Token Auth (or Basic fallback)
+      const headers = await getLegacyAuthHeaders();
       const response = await fetchLegacyProxy(path, { method: 'GET', headers });
-      if (!response.ok) return [];
+
+      if (!response.ok) {
+        console.warn(`Legacy API Error: ${response.status}`);
+        return [];
+      }
+
       const raw = await response.json();
       return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
     } catch (e) {
@@ -430,33 +446,11 @@ export const fetchAttendanceLogsRange = async (
     }
   };
 
-  // --- 3. Run Parallel & Merge (Fail-Safe) ---
-  // We run both requests but handle errors individually so one failing doesn't stop the other.
-  // This is critical because the New Server might have CORS issues while Legacy is fine (or vice versa).
+  // --- 2. Execute Only Legacy Fetch ---
+  const legacyLogsRaw = await fetchLegacyLogs();
 
-  let newLogsRaw: any[] = [];
-  let legacyLogsRaw: any[] = [];
-
-  const [newResult, legacyResult] = await Promise.allSettled([
-    fetchNewLogs(),
-    fetchLegacyLogs()
-  ]);
-
-  if (newResult.status === 'fulfilled') {
-    newLogsRaw = newResult.value;
-  } else {
-    // Silent fail for New Server as per user request to focus on Legacy
-    console.debug("New API (biometric_stats) skipped/failed.", newResult.reason);
-  }
-
-  if (legacyResult.status === 'fulfilled') {
-    legacyLogsRaw = legacyResult.value;
-  } else {
-    console.warn("Legacy API (via Proxy) failed.", legacyResult.reason);
-  }
-
-  // Merge (New logs take precedence if duplicate IDs exist, though IDs should rely on DB PK)
-  const combinedRaw = [...newLogsRaw, ...legacyLogsRaw];
+  // Merge (Simple, as we only have one source now)
+  const combinedRaw = [...legacyLogsRaw];
 
   // Transform to internal model
   const out: AttendanceRecord[] = [];
