@@ -196,27 +196,6 @@ const ensureAuthToken = async (): Promise<string> => {
 
 
 
-// --- LEGACY AUTH (Reverted to Safe Default) ---
-// We simply use the Legacy Config. Auth is handled via Basic Auth or existing Session if applicable.
-// No complex Proxy or Token Exchange here to ensure stability.
-
-export const getLegacyHeaders = async () => {
-  return {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  };
-};
-
-// Helper to generate JWT Headers
-export const getHeaders = async () => {
-  const token = await ensureAuthToken();
-  return {
-    'Authorization': `JWT ${token}`,
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  };
-};
-
 // Helper to generate JWT Headers
 export const getHeaders = async () => {
   const token = await ensureAuthToken();
