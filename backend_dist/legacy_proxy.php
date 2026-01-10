@@ -33,13 +33,20 @@ curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
 // Forward Headers (ignoring Host and Content-Length to let cURL handle them)
 $request_headers = getallheaders();
 $headers_to_send = [];
+$has_content_type = false;
+
 foreach ($request_headers as $key => $value) {
     if (strtolower($key) !== 'host' && strtolower($key) !== 'content-length' && strtolower($key) !== 'origin' && strtolower($key) !== 'referer') {
         $headers_to_send[] = "$key: $value";
+        if (strtolower($key) === 'content-type') {
+            $has_content_type = true;
+        }
     }
 }
-// Add standard content type if missing
-$headers_to_send[] = "Content-Type: application/json";
+
+if (!$has_content_type) {
+    $headers_to_send[] = "Content-Type: application/json";
+}
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers_to_send);
 
 // Forward Body (if any)

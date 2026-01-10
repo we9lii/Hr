@@ -242,13 +242,17 @@ const ensureAuthToken = async (): Promise<string> => {
 };
 
 // Routes requests through the secure PHP proxy to avoid Mixed Content errors on Web
+// Routes requests through the secure PHP proxy to avoid Mixed Content errors on Web
 export const fetchLegacyProxy = async (path: string, options: RequestInit = {}) => {
-  if (Capacitor.isNativePlatform()) {
-    // Native: Direct Fetch (HTTP is allowed)
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  if (Capacitor.isNativePlatform() || isLocalhost) {
+    // Native & Localhost: Direct Fetch (HTTP is allowed)
+    // Localhost needs this to avoid CORS/Proxy issues with Legacy Server
     const url = `http://qssun.dyndns.org:8085${path}`;
     return fetch(url, options);
   } else {
-    // Web: Proxy via PHP (HTTPS -> HTTPS -> HTTP)
+    // Web (Production): Proxy via PHP (HTTPS -> HTTPS -> HTTP)
     // Encode path component carefully
     const proxyUrl = `${API_CONFIG.baseUrl}/legacy_proxy.php?path=${encodeURIComponent(path)}`;
     return fetch(proxyUrl, options);
