@@ -392,12 +392,13 @@ export const fetchAttendanceLogsRange = async (
 
   // --- 2. Fetch from LEGACY Server (Old ZKTeco) ---
   const fetchLegacyLogs = async () => {
-    let url = `${LEGACY_API_CONFIG.baseUrl}/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
-    if (employeeId && employeeId !== 'ALL') url += `&emp_code=${employeeId}`;
-    if (deviceSn && deviceSn !== 'ALL') url += `&terminal_sn=${deviceSn}`;
+    // We use the Proxy Helper to ensure this works on Web (HTTPS)
+    let path = `/iclock/api/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+    if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
 
     try {
-      const response = await fetch(url, { method: 'GET', headers: await getHeaders() });
+      const response = await fetchLegacyProxy(path, { method: 'GET', headers: await getHeaders() });
       if (!response.ok) return [];
       const raw = await response.json();
       return Array.isArray(raw) ? raw : (raw.data || raw.results || []);

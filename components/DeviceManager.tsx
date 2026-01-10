@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Device } from '../types';
-import { fetchDevices, API_CONFIG, LEGACY_API_CONFIG, getHeaders } from '../services/api';
+import { fetchDevices, API_CONFIG, LEGACY_API_CONFIG, getHeaders, fetchLegacyProxy } from '../services/api';
 import { getDeviceConfig, DEVICE_RULES } from '../config/shifts';
 import { Settings, Smartphone, Clock, Code2, AlertCircle, RefreshCw, CheckCircle, UploadCloud } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -66,14 +66,11 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
         setSyncing(true);
         setSyncStatus('Fetching from Legacy...');
         try {
-            // 1. Fetch from LEGACY (Proxy) using the correct 'personnel' endpoint
-            const headers = await getHeaders(); // Use shared auth logic
+            // 1. Fetch from LEGACY (Proxy) 
+            const headers = await getHeaders();
 
-            const legacyUrl = 'http://qssun.dyndns.org:8085/personnel/api/employees/?page_size=2000';
-
-            const legacyRes = await fetch(legacyUrl, {
-                headers // Use headers with JWT
-            });
+            const path = '/personnel/api/employees/?page_size=2000';
+            const legacyRes = await fetchLegacyProxy(path, { headers });
 
             // Note: If auth is needed, we might need a fixed token or skipping auth if query is public/cookie-based
             // Fallback for demo: Assuming we can get list. If not, we might need to use a hardcoded list or admin credentials.
@@ -129,15 +126,14 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                 ];
 
                 for (const path of validPaths) {
-                    let tryUrl = '';
                     if (path.startsWith('/personnel')) {
-                        tryUrl = `http://qssun.dyndns.org:8085${path}`;
+                        // Keep path as is
                     } else {
-                        tryUrl = `http://qssun.dyndns.org:8085${path}`;
+                        // Keep path as is
                     }
 
                     try {
-                        const res = await fetch(tryUrl, { headers });
+                        const res = await fetchLegacyProxy(path, { headers });
                         if (res.ok) {
                             const fpData = await res.json();
                             templates = Array.isArray(fpData) ? fpData : (fpData.data || fpData.results || []);
