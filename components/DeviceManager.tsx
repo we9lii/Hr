@@ -139,7 +139,7 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                     }
 
                     try {
-                        const res = await fetch(tryUrl, { headers: legacyHeaders });
+                        const res = await fetch(tryUrl, { headers });
                         if (res.ok) {
                             const fpData = await res.json();
                             templates = Array.isArray(fpData) ? fpData : (fpData.data || fpData.results || []);

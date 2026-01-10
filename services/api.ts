@@ -396,8 +396,7 @@ export const fetchAttendanceLogsRange = async (
     if (deviceSn && deviceSn !== 'ALL') url += `&terminal_sn=${deviceSn}`;
 
     try {
-      const legacyHeaders = await getLegacyHeaders();
-      const response = await fetch(url, { method: 'GET', headers: legacyHeaders });
+      const response = await fetch(url, { method: 'GET', headers: await getHeaders() });
       if (!response.ok) return [];
       const raw = await response.json();
       return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
