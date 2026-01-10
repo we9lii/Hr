@@ -203,6 +203,15 @@ app.use('/iclock/api', createProxyMiddleware(proxyConfig));
 app.use('/personnel/api', createProxyMiddleware(proxyConfig));
 app.use('/att/api', createProxyMiddleware(proxyConfig));
 app.use('/jwt-api-token-auth', createProxyMiddleware(proxyConfig));
+// Legacy Proxies (Matching Vite Config for Consistency)
+app.use('/legacy_iclock', createProxyMiddleware({
+    ...proxyConfig,
+    pathRewrite: { '^/legacy_iclock': '/iclock' }
+}));
+app.use('/legacy_auth', createProxyMiddleware({
+    ...proxyConfig,
+    pathRewrite: { '^/legacy_auth': '' }
+}));
 app.use('/biometric_api', createProxyMiddleware(biometricProxyConfig));
 
 // Serve Static Files (Build Output)
