@@ -418,8 +418,29 @@ export const fetchAttendanceLogsRange = async (
     }
   };
 
-  // --- 3. Run Parallel & Merge ---
-  const [newLogsRaw, legacyLogsRaw] = await Promise.all([fetchNewLogs(), fetchLegacyLogs()]);
+  // --- 3. Run Parallel & Merge (Fail-Safe) ---
+  // We run both requests but handle errors individually so one failing doesn't stop the other.
+  // This is critical because the New Server might have CORS issues while Legacy is fine (or vice versa).
+
+  let newLogsRaw: any[] = [];
+  let legacyLogsRaw: any[] = [];
+
+  const [newResult, legacyResult] = await Promise.allSettled([
+    fetchNewLogs(),
+    fetchLegacyLogs()
+  ]);
+
+  if (newResult.status === 'fulfilled') {
+    newLogsRaw = newResult.value;
+  } else {
+    console.warn("New API (biometric_stats) failed, but continuing with Legacy...", newResult.reason);
+  }
+
+  if (legacyResult.status === 'fulfilled') {
+    legacyLogsRaw = legacyResult.value;
+  } else {
+    console.warn("Legacy API (via Proxy) failed.", legacyResult.reason);
+  }
 
   // Merge (New logs take precedence if duplicate IDs exist, though IDs should rely on DB PK)
   const combinedRaw = [...newLogsRaw, ...legacyLogsRaw];
