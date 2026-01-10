@@ -155,16 +155,15 @@ const enrichLogsWithWebPunches = async (logs: AttendanceRecord[], minDate: Date)
 const BASE_FOR_ENV = Capacitor.isNativePlatform() ? 'https://hr-bnyq.onrender.com' : '';
 
 // Real API Configuration (New Server - Custom PHP)
+// Real API Configuration (New Server - Custom PHP)
 export const API_CONFIG = {
-  baseUrl: Capacitor.isNativePlatform() ? 'https://qssun.solar/api' : '/biometric_api',
+  // Always use the Remote API on Web to ensure we can hit the Legacy Proxy
+  baseUrl: Capacitor.isNativePlatform() ? 'https://qssun.solar/api' : 'https://qssun.solar/api',
   username: 'admin',
   password: 'Admin@123',
 };
 
 // Legacy API Configuration (Old Server - Django/ZKTeco)
-// Legacy API Configuration (Old Server - Django/ZKTeco)
-// NOTE: We use the absolute URL to avoid "Unexpected token <" errors on Prod (which happen when using relative paths like /legacy_iclock without a proxy).
-// On HTTPS Web, this might cause Mixed Content errors (HTTP vs HTTPS), which is a browser limitation.
 const LEGACY_BASE_URL = 'http://qssun.dyndns.org:8085/iclock/api';
 
 export const LEGACY_API_CONFIG = {
@@ -173,29 +172,20 @@ export const LEGACY_API_CONFIG = {
   password: 'Admin@123',
 };
 
-// SECURITY API
-const SECURITY_API_URL = 'https://qssun.solar';
-
-let AUTH_TOKEN: string | null = null;
-
-const ensureAuthToken = async (): Promise<string> => {
-  if (AUTH_TOKEN) return AUTH_TOKEN;
-  const response = await fetch(`${BASE_FOR_ENV}/jwt-api-token-auth/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: API_CONFIG.username, password: API_CONFIG.password })
-  });
-  if (!response.ok) {
-    const t = await response.text();
-    throw new Error(`Auth Error: ${response.status} - ${t}`);
+// --- LEGACY PROXY HELPER ---
+// Routes requests through the secure PHP proxy to avoid Mixed Content errors on Web
+export const fetchLegacyProxy = async (path: string, options: RequestInit = {}) => {
+  if (Capacitor.isNativePlatform()) {
+    // Native: Direct Fetch (HTTP is allowed)
+    const url = `http://qssun.dyndns.org:8085${path}`;
+    return fetch(url, options);
+  } else {
+    // Web: Proxy via PHP (HTTPS -> HTTPS -> HTTP)
+    // Encode path component carefully
+    const proxyUrl = `${API_CONFIG.baseUrl}/legacy_proxy.php?path=${encodeURIComponent(path)}`;
+    return fetch(proxyUrl, options);
   }
-  const data = await response.json();
-  AUTH_TOKEN = data?.token || null;
-  if (!AUTH_TOKEN) throw new Error('Auth token missing');
-  return AUTH_TOKEN;
 };
-
-
 
 // Helper to generate JWT Headers
 export const getHeaders = async () => {
