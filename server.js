@@ -108,14 +108,52 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
             }
         }
 
+
         else if (table === 'USERINFO') {
             // USERINFO: Standard handling
             try {
                 let count = 0;
                 for (const line of lines) {
-                    if (processUserLine(line, SN)) count++;
+                    if (await processUserLine(line, SN)) count++;
                 }
                 console.log(`[ZKTeco] Synced ${count} users from USERINFO table`);
+            } catch (e) { console.error(e); }
+        }
+
+        else if (table === 'fingertmp') {
+            // FINGERPRINT: Sync to Server
+            try {
+                let count = 0;
+                const SYNC_FP_URL = 'https://qssun.solar/api/iclock/sync_fingerprint.php';
+                for (const line of lines) {
+                    // PIN=1 FID=0 Size=... TMP=...
+                    const parts = line.split('\t');
+                    const d = {};
+                    parts.forEach(p => {
+                        const [k, v] = p.split('=', 2);
+                        if (k) d[k.trim()] = v ? v.trim() : '';
+                    });
+
+                    if (d['PIN'] && d['TMP']) {
+                        const payload = {
+                            device_sn: SN,
+                            user_id: d['PIN'],
+                            finger_id: d['FID'] || 0,
+                            template_data: d['TMP'],
+                            size: d['Size'] || d['TMP'].length,
+                            valid: d['Valid'] || 1
+                        };
+                        try {
+                            await fetch(SYNC_FP_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            });
+                            count++;
+                        } catch (err) { console.error(err); }
+                    }
+                }
+                console.log(`[ZKTeco] Synced ${count} fingerprints.`);
             } catch (e) { console.error(e); }
         }
 
@@ -169,11 +207,26 @@ app.post('/iclock/trigger_full_sync', express.json({ limit: '50mb' }), async (re
             });
         }
 
+
         res.send({ status: 'success', queued: count });
     } catch (e) {
         console.error(e);
         res.status(500).send({ status: 'error', message: e.message });
     }
+});
+
+// Trigger Pull Data (Device -> Server)
+app.get('/iclock/trigger_pull', (req, res) => {
+    const { sn } = req.query;
+    if (!sn) return res.status(400).send("Missing SN");
+
+    console.log(`[ZKTeco] Scheduling PULL command for ${sn}`);
+
+    // Queue commands to pull Users and Fingerprints
+    pendingFingerprints.push(`C:9001:DATA QUERY USERINFO`);
+    pendingFingerprints.push(`C:9002:DATA QUERY FINGERTMP`);
+
+    res.send({ status: "success", message: "Pull commands queued. Reboot device to process immediately." });
 });
 
 app.all('/iclock/getrequest', async (req, res) => {
