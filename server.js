@@ -155,83 +155,28 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
             } catch (e) { console.error("DB Insert FP Error:", e.message); }
         }
 
+
+        else if (table === 'OPERLOG') {
+            // Smart Sync: detailed handling of operation logs
+            try {
+                console.log(`[Smart Sync] Operational Log received from ${SN}. Checking for User Info...`);
+                let userSyncCount = 0;
+                for (const line of lines) {
+                    if (await processUserLine(line, SN)) userSyncCount++;
+                }
+                if (userSyncCount > 0) {
+                    console.log(`[Smart Sync] Extracted ${userSyncCount} users directly from OPERLOG.`);
+                } else {
+                    console.log(`[Smart Sync] No direct user data in OPERLOG. Scheduling Force Query.`);
+                    hasSentForceQuery = false;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
         return res.send('OK');
     }
-
-    else if (table === 'OPERLOG') {
-        // Smart Sync: detailed handling of operation logs
-        // Logic: Scan for user data lines AND trigger smart sync if needed
-        try {
-            console.log(`[Smart Sync] Operational Log received from ${SN}. Checking for User Info...`);
-
-            // 1. Try to parse User Info from OPERLOG lines (sometimes it comes here!)
-            let userSyncCount = 0;
-            for (const line of lines) {
-                if (processUserLine(line, SN)) userSyncCount++;
-            }
-            if (userSyncCount > 0) {
-                console.log(`[Smart Sync] Extracted ${userSyncCount} users directly from OPERLOG.`);
-            } else {
-                // 2. If no direct user data found, but it looks like an operation (e.g. OPLOG 4/5), trigger a pull
-                console.log(`[Smart Sync] No direct user data in OPERLOG. Scheduling Force Query.`);
-                hasSentForceQuery = false;
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    }
-
-
-    else if (table === 'USERINFO') {
-        // USERINFO: Standard handling
-        try {
-            let count = 0;
-            for (const line of lines) {
-                if (await processUserLine(line, SN)) count++;
-            }
-            console.log(`[ZKTeco] Synced ${count} users from USERINFO table`);
-        } catch (e) { console.error(e); }
-    }
-
-    else if (table === 'fingertmp') {
-        // FINGERPRINT: Sync to Server
-        try {
-            let count = 0;
-            const SYNC_FP_URL = 'https://qssun.solar/api/iclock/sync_fingerprint.php';
-            for (const line of lines) {
-                // PIN=1 FID=0 Size=... TMP=...
-                const parts = line.split('\t');
-                const d = {};
-                parts.forEach(p => {
-                    const [k, v] = p.split('=', 2);
-                    if (k) d[k.trim()] = v ? v.trim() : '';
-                });
-
-                if (d['PIN'] && d['TMP']) {
-                    const payload = {
-                        device_sn: SN,
-                        user_id: d['PIN'],
-                        finger_id: d['FID'] || 0,
-                        template_data: d['TMP'],
-                        size: d['Size'] || d['TMP'].length,
-                        valid: d['Valid'] || 1
-                    };
-                    try {
-                        await fetch(SYNC_FP_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        count++;
-                    } catch (err) { console.error(err); }
-                }
-            }
-            console.log(`[ZKTeco] Synced ${count} fingerprints.`);
-        } catch (e) { console.error(e); }
-    }
-
-    return res.send('OK');
-}
 
     // Default Response
     res.send('OK');
