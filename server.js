@@ -96,7 +96,7 @@ const processUserLine = async (line, sn) => {
 // ZKTeco ADMS Listener (Must be BEFORE proxies)
 // 1. Handshake & Data Push
 // Note: express.text() is scoped ONLY to this route to avoid breaking proxies
-app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
+app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), async (req, res) => {
     const { SN, table, options } = req.query;
     console.log(`[ZKTeco] Request: ${req.method} ${req.url} (Type: ${req.headers['content-type']})`);
 
@@ -271,7 +271,7 @@ app.get('/iclock/trigger_pull', (req, res) => {
     res.send({ status: "success", message: "Pull commands queued. Reboot device to process immediately." });
 });
 
-app.all('/iclock/getrequest', async (req, res) => {
+app.all(['/iclock/getrequest', '/iclock/getrequest.php'], async (req, res) => {
     // console.log(`[ZKTeco] Heartbeat from ${req.query.SN}`);
 
     // Priority 1: Serve Fingerprint Commands (One by One)
@@ -292,7 +292,7 @@ app.all('/iclock/getrequest', async (req, res) => {
 });
 
 // 3. Command Response (When device finishes a command)
-app.post('/iclock/devicecmd', express.text({ type: '*/*' }), (req, res) => {
+app.post(['/iclock/devicecmd', '/iclock/devicecmd.php'], express.text({ type: '*/*' }), (req, res) => {
     const { SN } = req.query;
     console.log(`[ZKTeco] Device Command Response from ${SN}:`, req.body);
     res.send('OK');
