@@ -3,12 +3,25 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import mysql from 'mysql2/promise'; // Native DB Access
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// DB Configuration (Matches db_connect.php)
+const dbConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'qssunsol_qssun_user',
+    password: process.env.DB_PASSWORD || 'g3QL]cRAHvny',
+    database: process.env.DB_NAME || 'qssunsolar_qssunsolar_hr',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+};
+const pool = mysql.createPool(dbConfig);
 
 // Enable CORS for all routes
 app.use(cors());
@@ -31,6 +44,28 @@ const biometricProxyConfig = {
     secure: true,
     pathRewrite: {
         '^/biometric_api': '' // Remove /biometric_api prefix when forwarding
+    }
+};
+
+
+// Helper: Process User Line (Save to DB)
+const processUserLine = async (line, sn) => {
+    try {
+        const parts = line.split('\t');
+        const d = {};
+        parts.forEach(p => { const [k, v] = p.split('=', 2); if (k) d[k.trim()] = v ? v.trim() : ''; });
+
+        if (d['PIN']) {
+            const sql = `INSERT INTO biometric_users (user_id, name, role, card_number, password, device_sn) 
+                          VALUES (?, ?, ?, ?, ?, ?) 
+                          ON DUPLICATE KEY UPDATE name=VALUES(name), role=VALUES(role), card_number=VALUES(card_number), password=VALUES(password), device_sn=VALUES(device_sn)`;
+            await pool.execute(sql, [d['PIN'], d['Name'] || 'Unknown', d['Pri'] || 0, d['Card'] || '', d['Passwd'] || '', sn]);
+            return true;
+        }
+        return false;
+    } catch (e) {
+        console.error("DB Insert User Error:", e.message);
+        return false;
     }
 };
 
@@ -75,9 +110,6 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
                                 work_code: workCode || 0
                             })
                         });
-                        const logText = await resLog.text();
-                        console.log(`[ZKTeco] Log Sync Response (${resLog.status}):`, logText);
-
                         if (resLog.ok) count++;
                     }
                 }
@@ -85,80 +117,121 @@ app.all('/iclock/cdata', express.text({ type: '*/*' }), async (req, res) => {
             } catch (e) { console.error(e); }
         }
 
-        else if (table === 'OPERLOG') {
-            // Smart Sync: detailed handling of operation logs
-            // Logic: Scan for user data lines AND trigger smart sync if needed
-            try {
-                console.log(`[Smart Sync] Operational Log received from ${SN}. Checking for User Info...`);
-
-                // 1. Try to parse User Info from OPERLOG lines (sometimes it comes here!)
-                let userSyncCount = 0;
-                for (const line of lines) {
-                    if (processUserLine(line, SN)) userSyncCount++;
-                }
-                if (userSyncCount > 0) {
-                    console.log(`[Smart Sync] Extracted ${userSyncCount} users directly from OPERLOG.`);
-                } else {
-                    // 2. If no direct user data found, but it looks like an operation (e.g. OPLOG 4/5), trigger a pull
-                    console.log(`[Smart Sync] No direct user data in OPERLOG. Scheduling Force Query.`);
-                    hasSentForceQuery = false;
-                }
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-
         else if (table === 'USERINFO') {
-            // USERINFO: Standard handling
             try {
                 let count = 0;
                 for (const line of lines) {
                     if (await processUserLine(line, SN)) count++;
                 }
-                console.log(`[ZKTeco] Synced ${count} users from USERINFO table`);
+                console.log(`[ZKTeco] Synced ${count} users from USERINFO`);
             } catch (e) { console.error(e); }
         }
 
         else if (table === 'fingertmp') {
-            // FINGERPRINT: Sync to Server
             try {
                 let count = 0;
-                const SYNC_FP_URL = 'https://qssun.solar/api/iclock/sync_fingerprint.php';
                 for (const line of lines) {
-                    // PIN=1 FID=0 Size=... TMP=...
                     const parts = line.split('\t');
                     const d = {};
-                    parts.forEach(p => {
-                        const [k, v] = p.split('=', 2);
-                        if (k) d[k.trim()] = v ? v.trim() : '';
-                    });
+                    parts.forEach(p => { const [k, v] = p.split('=', 2); if (k) d[k.trim()] = v ? v.trim() : ''; });
 
                     if (d['PIN'] && d['TMP']) {
-                        const payload = {
-                            device_sn: SN,
-                            user_id: d['PIN'],
-                            finger_id: d['FID'] || 0,
-                            template_data: d['TMP'],
-                            size: d['Size'] || d['TMP'].length,
-                            valid: d['Valid'] || 1
-                        };
-                        try {
-                            await fetch(SYNC_FP_URL, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                            });
-                            count++;
-                        } catch (err) { console.error(err); }
+                        const sql = `INSERT INTO fingerprint_templates (user_id, finger_id, template_data, size, device_sn, valid) 
+                                     VALUES (?, ?, ?, ?, ?, ?) 
+                                     ON DUPLICATE KEY UPDATE template_data=VALUES(template_data), size=VALUES(size), valid=VALUES(valid), device_sn=VALUES(device_sn)`;
+
+                        await pool.execute(sql, [
+                            d['PIN'],
+                            d['FID'] || 0,
+                            d['TMP'],
+                            d['Size'] || d['TMP'].length,
+                            SN,
+                            d['Valid'] || 1
+                        ]);
+                        count++;
                     }
                 }
                 console.log(`[ZKTeco] Synced ${count} fingerprints.`);
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("DB Insert FP Error:", e.message); }
         }
 
         return res.send('OK');
     }
+
+    else if (table === 'OPERLOG') {
+        // Smart Sync: detailed handling of operation logs
+        // Logic: Scan for user data lines AND trigger smart sync if needed
+        try {
+            console.log(`[Smart Sync] Operational Log received from ${SN}. Checking for User Info...`);
+
+            // 1. Try to parse User Info from OPERLOG lines (sometimes it comes here!)
+            let userSyncCount = 0;
+            for (const line of lines) {
+                if (processUserLine(line, SN)) userSyncCount++;
+            }
+            if (userSyncCount > 0) {
+                console.log(`[Smart Sync] Extracted ${userSyncCount} users directly from OPERLOG.`);
+            } else {
+                // 2. If no direct user data found, but it looks like an operation (e.g. OPLOG 4/5), trigger a pull
+                console.log(`[Smart Sync] No direct user data in OPERLOG. Scheduling Force Query.`);
+                hasSentForceQuery = false;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+
+    else if (table === 'USERINFO') {
+        // USERINFO: Standard handling
+        try {
+            let count = 0;
+            for (const line of lines) {
+                if (await processUserLine(line, SN)) count++;
+            }
+            console.log(`[ZKTeco] Synced ${count} users from USERINFO table`);
+        } catch (e) { console.error(e); }
+    }
+
+    else if (table === 'fingertmp') {
+        // FINGERPRINT: Sync to Server
+        try {
+            let count = 0;
+            const SYNC_FP_URL = 'https://qssun.solar/api/iclock/sync_fingerprint.php';
+            for (const line of lines) {
+                // PIN=1 FID=0 Size=... TMP=...
+                const parts = line.split('\t');
+                const d = {};
+                parts.forEach(p => {
+                    const [k, v] = p.split('=', 2);
+                    if (k) d[k.trim()] = v ? v.trim() : '';
+                });
+
+                if (d['PIN'] && d['TMP']) {
+                    const payload = {
+                        device_sn: SN,
+                        user_id: d['PIN'],
+                        finger_id: d['FID'] || 0,
+                        template_data: d['TMP'],
+                        size: d['Size'] || d['TMP'].length,
+                        valid: d['Valid'] || 1
+                    };
+                    try {
+                        await fetch(SYNC_FP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        count++;
+                    } catch (err) { console.error(err); }
+                }
+            }
+            console.log(`[ZKTeco] Synced ${count} fingerprints.`);
+        } catch (e) { console.error(e); }
+    }
+
+    return res.send('OK');
+}
 
     // Default Response
     res.send('OK');
