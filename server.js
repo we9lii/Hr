@@ -183,16 +183,53 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
         else if (table === 'OPERLOG') {
             // Smart Sync: detailed handling of operation logs
             try {
-                console.log(`[Smart Sync] Operational Log received from ${SN}. Checking for User Info...`);
+                console.log(`[Smart Sync] Operational Log received from ${SN}. Parsing contents...`);
                 let userSyncCount = 0;
+                let fpSyncCount = 0;
+
                 for (const line of lines) {
-                    if (await processUserLine(line, SN)) userSyncCount++;
+                    // Check for Fingerprint
+                    if (line.includes('FP PIN=')) {
+                        try {
+                            const d = {};
+                            line.split('\t').forEach(p => { const [k, v] = p.split('=', 2); if (k) d[k.trim()] = v ? v.trim() : ''; });
+                            // Sometimes parsing might be weird if tab separated key=value isn't perfect, handle 'FP PIN' key specifically
+                            // The line starts with "FP PIN=..." so the first key is "FP PIN"
+                            let userId = d['FP PIN'];
+                            // Fallback if split failed or format is different
+                            if (!userId) {
+                                const match = line.match(/FP PIN=(\d+)/);
+                                if (match) userId = match[1];
+                            }
+
+                            if (userId && d['TMP']) {
+                                const sql = `INSERT INTO fingerprint_templates (user_id, finger_id, template_data, size, device_sn, valid) 
+                                             VALUES (?, ?, ?, ?, ?, ?) 
+                                             ON DUPLICATE KEY UPDATE template_data=VALUES(template_data), size=VALUES(size), valid=VALUES(valid), device_sn=VALUES(device_sn)`;
+                                await pool.execute(sql, [
+                                    userId,
+                                    d['FID'] || 0,
+                                    d['TMP'],
+                                    d['Size'] || d['TMP'].length,
+                                    SN,
+                                    d['Valid'] || 1
+                                ]);
+                                fpSyncCount++;
+                            }
+                        } catch (err) {
+                            console.error("Error parsing FP line in OPERLOG:", err.message);
+                        }
+                    }
+                    // Otherwise try User Info
+                    else {
+                        if (await processUserLine(line, SN)) userSyncCount++;
+                    }
                 }
-                if (userSyncCount > 0) {
-                    console.log(`[Smart Sync] Extracted ${userSyncCount} users directly from OPERLOG.`);
+
+                if (userSyncCount > 0 || fpSyncCount > 0) {
+                    console.log(`[Smart Sync] Processed ${userSyncCount} users and ${fpSyncCount} fingerprints from OPERLOG.`);
                 } else {
-                    console.log(`[Smart Sync] No direct user data in OPERLOG. Scheduling Force Query.`);
-                    hasSentForceQuery = false;
+                    console.log(`[Smart Sync] No actionable data in OPERLOG.`);
                 }
             } catch (e) {
                 console.error(e);
