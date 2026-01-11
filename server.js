@@ -49,18 +49,42 @@ const biometricProxyConfig = {
 
 
 // Helper: Process User Line (Save to DB)
+// Helper: Process User Line (Save to DB)
 const processUserLine = async (line, sn) => {
     try {
         const parts = line.split('\t');
         const d = {};
-        parts.forEach(p => { const [k, v] = p.split('=', 2); if (k) d[k.trim()] = v ? v.trim() : ''; });
+        parts.forEach(p => {
+            const splitArr = p.split('=');
+            if (splitArr.length >= 2) {
+                const k = splitArr[0].trim();
+                const v = splitArr.slice(1).join('=').trim();
+                if (k) d[k] = v;
+            }
+        });
 
-        if (d['PIN']) {
+        // Debug: Log parsed keys to ensure we are receiving data
+        // console.log(`[ZKTeco] Parsing User Line:`, JSON.stringify(d));
+
+        // PIN is standard, but sometimes it is USER PIN
+        const userId = d['PIN'] || d['USER PIN'];
+
+        if (userId) {
             const sql = `INSERT INTO biometric_users (user_id, name, role, card_number, password, device_sn) 
                           VALUES (?, ?, ?, ?, ?, ?) 
                           ON DUPLICATE KEY UPDATE name=VALUES(name), role=VALUES(role), card_number=VALUES(card_number), password=VALUES(password), device_sn=VALUES(device_sn)`;
-            await pool.execute(sql, [d['PIN'], d['Name'] || 'Unknown', d['Pri'] || 0, d['Card'] || '', d['Passwd'] || '', sn]);
+
+            await pool.execute(sql, [
+                userId,
+                d['Name'] || 'Unknown',
+                d['Pri'] || 0,
+                d['Card'] || '',
+                d['Passwd'] || '',
+                sn
+            ]);
             return true;
+        } else {
+            console.warn(`[ZKTeco] Warning: No User ID found in line: ${line}`);
         }
         return false;
     } catch (e) {
