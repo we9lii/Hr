@@ -137,27 +137,39 @@ const getRiyadhTime = () => {
 let hasSentForceQuery = false; // Memory flag to send command once per server restart
 let pendingFingerprints = []; // Queue for fingerprint commands
 
-// Trigger Fingerprint Sync (Called by Frontend)
-app.get('/iclock/trigger_fp_sync', async (req, res) => {
+
+// Trigger Full Sync (Users + Fingerprints)
+// Supports fetching from PHP (if available) OR accepting direct JSON payload
+app.post('/iclock/trigger_full_sync', express.json({ limit: '50mb' }), async (req, res) => {
     try {
-        const { sn } = req.query;
-        console.log(`[ZKTeco] Triggering Fingerprint Sync for ${sn}...`);
+        const { sn, users, fingerprints } = req.body;
+        console.log(`[ZKTeco] Triggering Full Sync for ${sn}...`);
 
-        // Fetch from PHP
-        const response = await fetch('https://qssun.solar/api/iclock/get_all_fingerprints.php');
-        const json = await response.json();
+        let count = 0;
 
-        const templates = json.templates || [];
-        console.log(`[ZKTeco] Found ${templates.length} templates to sync.`);
+        // 1. Queue Users (DATA UPDATE USERINFO)
+        if (users && Array.isArray(users)) {
+            console.log(`[ZKTeco] Queuing ${users.length} users...`);
+            users.forEach((u, idx) => {
+                // Command: DATA UPDATE USERINFO PIN=1 Name=...
+                // Ensure proper formatting
+                const cmdString = `DATA UPDATE USERINFO PIN=${u.user_id}\tName=${u.name}\tPri=${u.role}\tPasswd=${u.password}\tCard=${u.card_number}\tGrp=1`;
+                pendingFingerprints.push(`C:${2000 + idx}:${cmdString}`);
+                count++;
+            });
+        }
 
-        // Populate Queue
-        pendingFingerprints = templates.map((t, idx) => {
-            // Command Format: DATA UPDATE FINGERTMP PIN=1 FID=0 TMP=...
-            // Using logic ID (idx + 1000) to avoid conflict
-            return `C:${1000 + idx}:DATA UPDATE FINGERTMP PIN=${t.user_id} FID=${t.finger_id} TMP=${t.template_data}`;
-        });
+        // 2. Queue Fingerprints (DATA UPDATE FINGERTMP)
+        if (fingerprints && Array.isArray(fingerprints)) {
+            console.log(`[ZKTeco] Queuing ${fingerprints.length} fingerprints...`);
+            fingerprints.forEach((fp, idx) => {
+                const cmdString = `DATA UPDATE FINGERTMP PIN=${fp.user_id}\tFID=${fp.finger_id}\tSize=${fp.size}\tValid=${fp.valid}\tTMP=${fp.template_data}`;
+                pendingFingerprints.push(`C:${3000 + idx}:${cmdString}`);
+                count++;
+            });
+        }
 
-        res.send({ status: 'success', count: pendingFingerprints.length });
+        res.send({ status: 'success', queued: count });
     } catch (e) {
         console.error(e);
         res.status(500).send({ status: 'error', message: e.message });

@@ -103,6 +103,87 @@ if ($table === 'ATTLOG') {
     exit;
 }
 
+// 3.1 Process User Info (table=user)
+if ($table === 'user') {
+    $content = file_get_contents('php://input');
+    if (!empty($content)) {
+        $lines = explode("\n", $content);
+        foreach ($lines as $line) {
+            if (empty(trim($line)))
+                continue;
+            // Parse Key=Value pairs
+            // Example: PIN=1010	Name=Ahmed	Pri=0	Passwd=	Card=	Grp=1
+            $parts = preg_split('/\t/', trim($line));
+            $data = [];
+            foreach ($parts as $part) {
+                $kv = explode('=', $part, 2);
+                if (count($kv) == 2) {
+                    $data[$kv[0]] = $kv[1];
+                }
+            }
+
+            if (isset($data['PIN'])) {
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO biometric_users (user_id, name, role, card_number, password, device_sn) 
+                                           VALUES (?, ?, ?, ?, ?, ?) 
+                                           ON DUPLICATE KEY UPDATE name=VALUES(name), role=VALUES(role), card_number=VALUES(card_number), password=VALUES(password)");
+                    $stmt->execute([
+                        $data['PIN'],
+                        $data['Name'] ?? 'Unknown',
+                        $data['Pri'] ?? 0,
+                        $data['Card'] ?? '',
+                        $data['Passwd'] ?? '',
+                        $sn
+                    ]);
+                } catch (Exception $e) {
+                }
+            }
+        }
+    }
+    echo "OK";
+    exit;
+}
+
+// 3.2 Process Fingerprints (table=fingertmp)
+if ($table === 'fingertmp') {
+    $content = file_get_contents('php://input');
+    if (!empty($content)) {
+        $lines = explode("\n", $content);
+        foreach ($lines as $line) {
+            if (empty(trim($line)))
+                continue;
+            // PIN=1010	FID=0	Size=1400	Valid=1	TMP=...
+            $parts = preg_split('/\t/', trim($line));
+            $data = [];
+            foreach ($parts as $part) {
+                $kv = explode('=', $part, 2);
+                if (count($kv) == 2) {
+                    $data[$kv[0]] = $kv[1];
+                }
+            }
+
+            if (isset($data['PIN']) && isset($data['FID']) && isset($data['TMP'])) {
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO fingerprint_templates (user_id, finger_id, template_data, size, device_sn, valid) 
+                                           VALUES (?, ?, ?, ?, ?, ?) 
+                                           ON DUPLICATE KEY UPDATE template_data=VALUES(template_data), size=VALUES(size), valid=VALUES(valid)");
+                    $stmt->execute([
+                        $data['PIN'],
+                        $data['FID'],
+                        $data['TMP'],
+                        $data['Size'] ?? 0,
+                        $sn,
+                        $data['Valid'] ?? 1
+                    ]);
+                } catch (Exception $e) {
+                }
+            }
+        }
+    }
+    echo "OK";
+    exit;
+}
+
 // 4. Process Operation Logs (OPERLOG) - Optional
 if ($table === 'OPERLOG') {
     echo "OK";

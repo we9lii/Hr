@@ -1,4 +1,4 @@
-<?php
+biometric_stats.php<?php
 // Disable display errors to prevent HTML pollution in JSON response
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
