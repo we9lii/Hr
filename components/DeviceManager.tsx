@@ -68,8 +68,8 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
         try {
             // Trigger Pull Data (Device -> Server)
             // This queues "DATA QUERY USERINFO" and "DATA QUERY FINGERTMP" commands
-            // The device will execute them on next heartbeat and upload its data to server.js (which uses the bridge)
-            const res = await fetch(`${API_CONFIG.baseUrl}/iclock/trigger_pull?sn=${targetSn}`);
+            // Using relative path to avoid CORS (Proxied by Vite/Node)
+            const res = await fetch(`/iclock/trigger_pull?sn=${targetSn}`);
 
             if (!res.ok) throw new Error('Failed to queue commands');
             const data = await res.json();
