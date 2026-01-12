@@ -170,7 +170,46 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
             try {
                 let count = 0;
                 for (const line of lines) {
-                    if (await processUserLine(line, SN)) count++;
+                    // processUserLine logic moved to PHP Bridge
+                    // Parse line for JSON payload
+                    const parts = line.split('\t');
+                    const d = {};
+                    parts.forEach(p => {
+                        const splitArr = p.split('=');
+                        if (splitArr.length >= 2) {
+                            const k = splitArr[0].trim();
+                            const v = splitArr.slice(1).join('=').trim();
+                            if (k) d[k] = v;
+                        }
+                    });
+
+                    const userId = d['PIN'] || d['USER PIN'];
+                    if (userId) {
+                        try {
+                            const response = await fetch('https://qssun.solar/api/iclock/sync_user.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    user_id: userId,
+                                    name: d['Name'] || '',
+                                    role: d['Pri'] || 0,
+                                    card_number: d['Card'] || '',
+                                    password: d['Passwd'] || '',
+                                    device_sn: SN
+                                })
+                            });
+
+                            const result = await response.json();
+                            if (response.ok && result.status === 'success') {
+                                console.log(`[Bridge Success] Saved User: ${userId} (${d['Name']})`);
+                                count++;
+                            } else {
+                                console.error(`[Bridge Error] User Sync Failed:`, result.message);
+                            }
+                        } catch (bridgeErr) {
+                            console.error(`[Bridge Network Error] Failed to contact PHP script for User Sync:`, bridgeErr.message);
+                        }
+                    }
                 }
                 console.log(`[ZKTeco] Synced ${count} users from USERINFO`);
             } catch (e) { console.error(e); }
