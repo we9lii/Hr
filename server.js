@@ -178,7 +178,7 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                     if (d['PIN'] && d['TMP']) {
                         // Valid Data - Send to PHP Bridge (Bypassing Port 3306 Block)
                         try {
-                            const response = await fetch(FINGERPRINT_SYNC_URL, {
+                            const response = await fetch('https://qssun.solar/api/iclock/sync_fingerprint.php', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -239,7 +239,7 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
 
                             if (userId && d['TMP']) {
                                 // Valid Data - Send to PHP Bridge (Bypassing Port 3306 Block)
-                                const bridgeUrl = 'https://qssun.solar/backend_dist/iclock/sync_fingerprint.php';
+                                const bridgeUrl = 'https://qssun.solar/api/iclock/sync_fingerprint.php';
 
                                 const response = await fetch(bridgeUrl, {
                                     method: 'POST',
