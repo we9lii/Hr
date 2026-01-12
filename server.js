@@ -66,6 +66,7 @@ const biometricProxyConfig = {
 
 // Helper: Process User Line (Save to DB)
 // Helper: Process User Line (Save to DB)
+// Helper: Process User Line (Save to DB via Bridge)
 const processUserLine = async (line, sn) => {
     try {
         const parts = line.split('\t');
@@ -86,21 +87,34 @@ const processUserLine = async (line, sn) => {
         const userId = d['PIN'] || d['USER PIN'];
 
         if (userId) {
-            const sql = `INSERT INTO biometric_users (user_id, name, role, card_number, password, device_sn) 
-                          VALUES (?, ?, ?, ?, ?, ?) 
-                          ON DUPLICATE KEY UPDATE name=VALUES(name), role=VALUES(role), card_number=VALUES(card_number), password=VALUES(password), device_sn=VALUES(device_sn)`;
+            // Use PHP Bridge
+            try {
+                const response = await fetch('https://qssun.solar/api/iclock/sync_user.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        name: d['Name'] || '',
+                        role: d['Pri'] || 0,
+                        card_number: d['Card'] || '',
+                        password: d['Passwd'] || '',
+                        device_sn: sn
+                    })
+                });
 
-            await pool.execute(sql, [
-                userId,
-                d['Name'] || 'Unknown',
-                d['Pri'] || 0,
-                d['Card'] || '',
-                d['Passwd'] || '',
-                sn
-            ]);
-            return true;
+                const result = await response.json();
+                if (result.status === 'success') {
+                    console.log(`[Bridge Success] Saved User (from Log): ${userId} (${d['Name']})`);
+                    return true;
+                } else {
+                    console.error(`[Bridge Error] User Sync Failed:`, result.message);
+                }
+            } catch (bridgeErr) {
+                console.error(`[Bridge Network Error] Failed to contact PHP script for User Sync:`, bridgeErr.message);
+            }
         } else {
-            console.warn(`[ZKTeco] Warning: No User ID found in line: ${line}`);
+            // Only warn if it significantly looks like user data but missing PIN
+            if (line.includes('Name=')) console.warn(`[ZKTeco] Warning: No User ID found in line with Name: ${line}`);
         }
         return false;
     } catch (e) {
@@ -138,25 +152,29 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                     if (parts.length >= 2) {
                         const [userId, time, status, verify, workCode] = parts;
                         // HTTP Bridge: Sync Log
-                        const resLog = await fetch(SYNC_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                device_sn: SN,
-                                user_id: userId,
-                                check_time: time,
-                                status: status || 0,
-                                verify_mode: verify || 1,
-                                work_code: workCode || 0
-                            })
-                        });
+                        try {
+                            const resLog = await fetch('https://qssun.solar/api/iclock/sync_log.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    device_sn: SN,
+                                    user_id: userId,
+                                    check_time: time,
+                                    status: status || 0,
+                                    verify_mode: verify || 1,
+                                    work_code: workCode || 0
+                                })
+                            });
 
-                        const logData = await resLog.json();
-                        if (resLog.ok && logData.status === 'success') {
-                            console.log(`[Bridge Success] Log Synced: User=${userId} Time=${time}`);
-                            count++;
-                        } else {
-                            console.error(`[Bridge Error] Log Sync Failed:`, logData.message || resLog.statusText);
+                            const logData = await resLog.json();
+                            if (resLog.ok && logData.status === 'success') {
+                                console.log(`[Bridge Success] Log Synced: User=${userId} Time=${time}`);
+                                count++;
+                            } else {
+                                console.error(`[Bridge Error] Log Sync Failed:`, logData.message || resLog.statusText);
+                            }
+                        } catch (bridgeErr) {
+                            console.error(`[Bridge Network Error] Failed to contact PHP script:`, bridgeErr.message);
                         }
                     }
                 }
@@ -166,7 +184,7 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
             }
         }
 
-        else if (table === 'USERINFO' || table === 'userinfo') {
+        else if (table === 'USERINFO' || table === 'userinfo' || table === 'user') {
             console.log(`[ZKTeco] Processing USERINFO. Total lines: ${lines.length}`);
             if (lines.length > 0) console.log(`[ZKTeco] Sample Line: ${lines[0]}`);
 
