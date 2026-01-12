@@ -378,6 +378,7 @@ const getRiyadhTime = () => {
 
 app.all(['/iclock/getrequest', '/iclock/getrequest.php'], async (req, res) => {
     // console.log(`[ZKTeco] Heartbeat from ${req.query.SN}`);
+    res.set('Date', new Date().toUTCString()); // Standard HTTP Date Header for Time Sync
 
     // Priority 1: Serve Fingerprint Commands (One by One)
     if (pendingFingerprints.length > 0) {

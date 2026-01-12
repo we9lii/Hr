@@ -4,6 +4,7 @@
 
 header("Content-Type: text/plain");
 header("Date: " . gmdate('D, d M Y H:i:s') . " GMT");
+date_default_timezone_set('Asia/Riyadh'); // Force Riyadh Time
 require_once '../db_connect.php'; // Go up one level to find db_connect
 
 // Debugging & Diagnostics

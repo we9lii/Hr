@@ -266,7 +266,7 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                                                 label = 'غياب';
                                                                 color = 'bg-red-500/10 text-red-500 border border-red-500/20'; // Red for Absence
                                                             } else {
-                                                                label = 'حضور';
+                                                                label = 'دخول';
                                                                 color = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
                                                             }
                                                             break;
