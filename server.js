@@ -51,16 +51,29 @@ const proxyConfig = {
     target,
     changeOrigin: true,
     secure: false,
+    timeout: 15000,
+    proxyTimeout: 15000
 };
 
+// Proxy Configuration (Local cPanel API)
 // Proxy Configuration (Local cPanel API)
 const biometricProxyConfig = {
     target: 'https://qssun.solar/api',
     changeOrigin: true,
-    secure: true,
+    secure: false, // Allow self-signed or chain issues
     pathRewrite: {
         '^/biometric_api': '' // Remove /biometric_api prefix when forwarding
-    }
+    },
+    // Add logging and error handling
+    onProxyReq: (proxyReq, req, res) => {
+        // console.log(`[Proxy] Proxying ${req.method} request to: ${proxyReq.path}`);
+    },
+    onError: (err, req, res) => {
+        console.error(`[Proxy Error] ${err.message} on ${req.url}`);
+        res.status(502).send(`Proxy Error: ${err.message}`);
+    },
+    timeout: 10000,
+    proxyTimeout: 10000
 };
 
 
