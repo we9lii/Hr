@@ -1,4 +1,4 @@
-biometric_stats.php<?php
+<?php
 // Disable display errors to prevent HTML pollution in JSON response
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
@@ -19,20 +19,24 @@ try {
     $terminal_sn = $_GET['terminal_sn'] ?? ($_GET['device_sn'] ?? '');
 
     // Build Query
-    $sql = "SELECT * FROM attendance_logs WHERE check_time >= ? AND check_time <= ?";
+    // Join with biometric_users to get real names
+    $sql = "SELECT l.*, u.name as real_name 
+            FROM attendance_logs l 
+            LEFT JOIN biometric_users u ON l.user_id = u.user_id 
+            WHERE l.check_time >= ? AND l.check_time <= ?";
     $params = [$start_date, $end_date];
 
     if (!empty($emp_code) && $emp_code !== 'ALL') {
-        $sql .= " AND user_id = ?";
+        $sql .= " AND l.user_id = ?";
         $params[] = $emp_code;
     }
 
     if (!empty($terminal_sn) && $terminal_sn !== 'ALL') {
-        $sql .= " AND device_sn = ?";
+        $sql .= " AND l.device_sn = ?";
         $params[] = $terminal_sn;
     }
 
-    $sql .= " ORDER BY check_time DESC LIMIT 1000";
+    $sql .= " ORDER BY l.check_time DESC LIMIT 1000";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -43,14 +47,14 @@ try {
         $results[] = [
             'id' => $row['id'],
             'emp_code' => $row['user_id'],
-            // Ideally we should join with users table, but for now we fallback
-            'emp_name' => "User " . $row['user_id'],
+            // Use real name if found, else fallback
+            'emp_name' => $row['real_name'] ? $row['real_name'] : ("User " . $row['user_id']),
             'punch_time' => $row['check_time'],
             'punch_state' => $row['status'],
             'verify_type_display' => ($row['verify_mode'] == 1 ? 'Finger' : ($row['verify_mode'] == 15 ? 'Face' : 'Other')),
             'terminal_sn' => $row['device_sn'],
-            'terminal_alias' => $row['device_sn'], // Can be enriched by frontend if needed
-            'area_alias' => 'Main Branch' // Default
+            'terminal_alias' => $row['device_sn'],
+            'area_alias' => 'Main Branch'
         ];
     }
 

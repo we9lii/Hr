@@ -3,6 +3,7 @@
 // Receives Push Data from Device
 
 header("Content-Type: text/plain");
+header("Date: " . gmdate('D, d M Y H:i:s') . " GMT");
 require_once '../db_connect.php'; // Go up one level to find db_connect
 
 // Debugging & Diagnostics
@@ -202,6 +203,8 @@ if ($options === 'all') {
     echo "TransFlag=1111000000\n";
     echo "Realtime=1\n";
     echo "Encrypt=0\n";
+    echo "TimeZone=3\n"; // Force Riyadh Timezone
+    echo "DateTime=" . date('Y-m-d H:i:s') . "\n"; // Send current server time specifically
     exit;
 }
 

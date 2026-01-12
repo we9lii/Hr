@@ -222,11 +222,16 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                                             ) : (
                                                 <div className="flex flex-col items-start gap-1">
                                                     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border shadow-[0_0_10px_rgba(0,0,0,0.1)] ${log.type === 'CHECK_IN' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]' :
-                                                        log.type === 'CHECK_OUT' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' :
-                                                            'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                            log.type === 'CHECK_OUT' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' :
+                                                                log.type === 'BREAK_OUT' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]' :
+                                                                    log.type === 'BREAK_IN' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]' :
+                                                                        'bg-slate-500/10 text-slate-400 border-slate-500/20'
                                                         }`}>
                                                         {log.type === 'CHECK_IN' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>}
-                                                        {log.type === 'CHECK_IN' ? 'تسجيل دخول' : log.type === 'CHECK_OUT' ? 'تسجيل خروج' : 'حركة'}
+                                                        {log.type === 'CHECK_IN' ? 'تسجيل دخول' :
+                                                            log.type === 'CHECK_OUT' ? 'تسجيل خروج' :
+                                                                log.type === 'BREAK_OUT' ? 'استراحة' :
+                                                                    log.type === 'BREAK_IN' ? 'عودة' : 'حركة'}
                                                     </span>
                                                     {log.status === 'LATE' && log.type === 'CHECK_IN' && (
                                                         <span className="text-[10px] text-amber-500 font-bold px-1">⚠️ متأخر</span>

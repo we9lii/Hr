@@ -4,6 +4,7 @@
 // We usually reply "OK" unless we want to send commands (like Update Name, Delete User).
 
 header("Content-Type: text/plain");
+header("Date: " . gmdate('D, d M Y H:i:s') . " GMT"); // Standard HTTP Date
 require_once '../db_connect.php';
 
 $sn = $_GET['SN'] ?? '';

@@ -434,23 +434,49 @@ export const fetchAttendanceLogsRange = async (
   const gte = fmt(startDate);
   const lte = fmt(endDate);
 
-  // --- 1. Cleaned Up Legacy Fetch Logic (Direct to Source) ---
-  const fetchLegacyLogs = async () => {
-    // We use the Proxy Helper to ensure this works on Web (HTTPS)
-    let path = `/iclock/api/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+  // --- 1. Fetch from Local Bridge (New Devices) ---
+  const fetchBridgeLogs = async () => {
+    // Moved to iclock folder for consistency
+    // Note: The file is now at iclock/transactions.php
+    let path = `/biometric_api/iclock/transactions.php?punch_time__gte=${gte}&punch_time__lte=${lte}`;
+
+    if (Capacitor.isNativePlatform()) {
+      path = `https://qssun.solar/api/iclock/transactions.php?punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    }
+
     if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
     if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
 
     try {
-      // Use Legacy Token Auth (or Basic fallback)
+      const response = await fetch(path);
+      if (!response.ok) return [];
+      const raw = await response.json();
+      return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+    } catch (e) {
+      console.warn("Bridge API Fetch Failed:", e);
+      return [];
+    }
+  };
+
+  // --- 2. Fetch from Legacy BioTime (Old Devices) ---
+  const fetchLegacyLogs = async () => {
+    // Use the Legacy Proxy mapped in server.js
+    let path = `/legacy_iclock/api/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+
+    if (Capacitor.isNativePlatform()) {
+      // Native: Direct to Legacy Server
+      path = `http://qssun.dyndns.org:8085/iclock/api/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    }
+
+    if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+    if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
+
+    try {
       const headers = await getLegacyAuthHeaders();
-      const response = await fetchLegacyProxy(path, { method: 'GET', headers });
+      // Use fetch directly for path (web) or url (native)
+      const response = await fetch(path, { method: 'GET', headers });
 
-      if (!response.ok) {
-        console.warn(`Legacy API Error: ${response.status}`);
-        return [];
-      }
-
+      if (!response.ok) return [];
       const raw = await response.json();
       return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
     } catch (e) {
@@ -459,16 +485,22 @@ export const fetchAttendanceLogsRange = async (
     }
   };
 
-  // --- 2. Execute Only Legacy Fetch ---
-  const legacyLogsRaw = await fetchLegacyLogs();
+  // --- 3. Execute Both & Merge ---
+  const [bridgeLogs, legacyLogs] = await Promise.all([fetchBridgeLogs(), fetchLegacyLogs()]);
 
-  // Merge (Simple, as we only have one source now)
-  const combinedRaw = [...legacyLogsRaw];
+  // Merge Arrays
+  const combinedRaw = [...bridgeLogs, ...legacyLogs];
 
   // Transform to internal model
   const out: AttendanceRecord[] = [];
+  const seenIds = new Set(); // Dedup by ID
 
   for (const item of combinedRaw) {
+    // Unique Key (ID from DB or generated)
+    const uniqueKey = item.id ? String(item.id) : `log-${item.emp_code}-${item.punch_time}`;
+    if (seenIds.has(uniqueKey)) continue;
+    seenIds.add(uniqueKey);
+
     const punchTime = new Date(item.punch_time || item.time || item.timestamp);
 
     // Basic Filter Check (Just to be safe)
@@ -476,7 +508,7 @@ export const fetchAttendanceLogsRange = async (
       const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
 
       out.push({
-        id: item.id ? String(item.id) : `log-${punchTime.getTime()}-${item.emp_code}`,
+        id: uniqueKey,
         employeeId: item.emp_code || item.user_id || 'UNKNOWN',
         employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
         timestamp: punchTime.toISOString(),
@@ -491,6 +523,8 @@ export const fetchAttendanceLogsRange = async (
       } as AttendanceRecord);
     }
   }
+
+
 
   // --- 4. Fetch Manual Logs (Hybrid Fetch) ---
   // To keep it simple and robust, we fetch manual logs from the NEW server (assuming it syncs)
