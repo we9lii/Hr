@@ -131,9 +131,13 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
     console.log(`[ZKTeco] Request: ${req.method} ${req.url} (Type: ${req.headers['content-type']})`);
 
     // Handshake (First Connection)
+    // Always set Date header for syncing
+    res.set('Date', new Date().toUTCString());
+
     if (req.method === 'GET' && options === 'all') {
         console.log(`[ZKTeco] Handshake from ${SN}`);
-        return res.send(`GET OPTION FROM: ${SN}\nStamp=0\nOpStamp=0\nErrorDelay=60\nDelay=30\nTransTimes=00:00;14:05\nTransInterval=1\nTransFlag=1111000000\nRealtime=1\nEncrypt=0\nServerVer=3.4.1\nDate=${getRiyadhTime()}`);
+        const serverTime = getRiyadhTime();
+        return res.send(`GET OPTION FROM: ${SN}\nStamp=0\nOpStamp=0\nErrorDelay=60\nDelay=30\nTransTimes=00:00;14:05\nTransInterval=1\nTransFlag=1111000000\nRealtime=1\nEncrypt=0\nServerVer=3.4.1\nTimeZone=3\nDateTime=${serverTime}\nDate=${serverTime}`);
     }
 
     // Data Push (Attendance Logs)
