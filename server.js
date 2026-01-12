@@ -238,18 +238,29 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                             }
 
                             if (userId && d['TMP']) {
-                                const sql = `INSERT INTO fingerprint_templates (user_id, finger_id, template_data, size, device_sn, valid) 
-                                             VALUES (?, ?, ?, ?, ?, ?) 
-                                             ON DUPLICATE KEY UPDATE template_data=VALUES(template_data), size=VALUES(size), valid=VALUES(valid), device_sn=VALUES(device_sn)`;
-                                await pool.execute(sql, [
-                                    userId,
-                                    d['FID'] || 0,
-                                    d['TMP'],
-                                    d['Size'] || d['TMP'].length,
-                                    SN,
-                                    d['Valid'] || 1
-                                ]);
-                                fpSyncCount++;
+                                // Valid Data - Send to PHP Bridge (Bypassing Port 3306 Block)
+                                const bridgeUrl = 'https://qssun.solar/backend_dist/iclock/sync_fingerprint.php';
+
+                                const response = await fetch(bridgeUrl, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        user_id: userId,
+                                        finger_id: d['FID'] || 0,
+                                        template_data: d['TMP'],
+                                        size: d['Size'] || d['TMP'].length,
+                                        valid: d['Valid'] || 1,
+                                        device_sn: SN
+                                    })
+                                });
+
+                                const result = await response.json();
+                                if (result.status === 'success') {
+                                    console.log(`[Bridge Success] Saved Template from OPERLOG: User=${userId} FID=${d['FID']}`);
+                                    fpSyncCount++;
+                                } else {
+                                    console.error(`[Bridge Error] PHP Script Failed:`, result.message);
+                                }
                             }
                         } catch (err) {
                             console.error("Error parsing FP/FACE line in OPERLOG:", {
