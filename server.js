@@ -366,23 +366,37 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
     res.send('OK');
 });
 
+// Helper: Riyadh Time
 const getRiyadhTime = () => {
     // Force UTC+3 (Riyadh)
     const now = new Date();
     const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
     const riyadhOffset = 3 * 60 * 60 * 1000;
     const riyadhDate = new Date(utc + riyadhOffset);
-
-    // Format: YYYY-MM-DD HH:mm:ss
     return riyadhDate.toISOString().replace(/T/, ' ').replace(/\..+/, '');
 };
 
-// ...
+app.all(['/iclock/getrequest', '/iclock/getrequest.php'], async (req, res) => {
+    // console.log(`[ZKTeco] Heartbeat from ${req.query.SN}`);
 
-// Always send server time to keep device synced
-const serverTime = getRiyadhTime();
-// console.log(`[ZKTeco] Sending Server Time to ${req.query.SN}: ${serverTime}`);
-res.send(`OK\nDate=${serverTime}`);
+    // Priority 1: Serve Fingerprint Commands (One by One)
+    if (pendingFingerprints.length > 0) {
+        const cmd = pendingFingerprints.shift();
+        console.log(`[ZKTeco] Sending FP Command (${pendingFingerprints.length} remaining): ${cmd.substring(0, 50)}...`);
+        return res.send(cmd);
+    }
+
+    // Priority 2: Force User Info Sync (Once)
+    if (!hasSentForceQuery) {
+        console.log(`[ZKTeco] Sending FORCE SYNC command to ${req.query.SN}`);
+        hasSentForceQuery = true;
+        // Also send date to correct time immediately
+        return res.send(`C:1:DATA QUERY USERINFO\nDate=${getRiyadhTime()}`);
+    }
+
+    // Always send server time to keep device synced
+    const serverTime = getRiyadhTime();
+    res.send(`OK\nDate=${serverTime}`);
 });
 
 // 3. Command Response (When device finishes a command)
