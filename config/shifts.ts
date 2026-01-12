@@ -113,7 +113,8 @@ export const DEVICE_RULES: DeviceRule[] = [
     {
         matcher: (d) => d.sn === 'AF4C232560143' || (d.alias || '').includes('Test'),
         shifts: [
-            { start: '09:00', end: '17:00' }
+            { start: '08:00', end: '12:00' },
+            { start: '15:15', end: '20:15' }
         ],
         aliasOverride: 'جهاز تجريبي ( فيصل )'
     }

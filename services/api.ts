@@ -1026,24 +1026,53 @@ export const fetchDevices = async (): Promise<DeviceInfo[]> => {
 };
 
 export const fetchDeviceEmployees = async (terminalSn: string): Promise<{ empCode: string; empName: string }[]> => {
-  const headers = await getLegacyAuthHeaders();
-  const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?page_size=1000&ordering=-id&terminal_sn=${terminalSn}`, {
-    method: 'GET',
-    headers
-  });
-  if (!response.ok) {
-    const t = await response.text();
-    throw new Error(`Server Error: ${response.status} - ${t}`);
-  }
-  const raw = await response.json();
-  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
-  const filtered = list.filter((x: any) => String(x.terminal_sn || '') === terminalSn);
   const map = new Map<string, string>();
-  filtered.forEach((x: any) => {
-    const code = String(x.emp_code || x.user_id || 'UNKNOWN');
-    const name = String(x.emp_name || `${x.first_name || ''} ${x.last_name || ''}`).trim();
-    if (!map.has(code)) map.set(code, name);
-  });
+
+  // Helper to process list
+  const processList = (list: any[]) => {
+    list.forEach((x: any) => {
+      // Normalize SN compare
+      if (terminalSn !== 'ALL' && String(x.terminal_sn || x.device_sn || '') !== terminalSn) return;
+
+      const code = String(x.emp_code || x.user_id || 'UNKNOWN');
+      const name = String(x.emp_name || x.real_name || `${x.first_name || ''} ${x.last_name || ''}`).trim();
+      if (!map.has(code) && code !== 'UNKNOWN') map.set(code, name);
+    });
+  };
+
+  // 1. Fetch from Legacy
+  try {
+    const headers = await getLegacyAuthHeaders();
+    // Default legacy fetch
+    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?page_size=1000&ordering=-id&terminal_sn=${terminalSn}`, {
+      method: 'GET',
+      headers
+    });
+    if (response.ok) {
+      const raw = await response.json();
+      const list = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+      processList(list);
+    }
+  } catch (e) {
+    console.warn("Legacy fetchDeviceEmployees failed", e);
+  }
+
+  // 2. Fetch from Bridge (New Device)
+  try {
+    let path = `/biometric_api/iclock/transactions.php?terminal_sn=${terminalSn}`;
+    if (Capacitor.isNativePlatform()) {
+      path = `https://qssun.solar/api/iclock/transactions.php?terminal_sn=${terminalSn}`;
+    }
+    const bridgeResp = await fetch(path);
+    if (bridgeResp.ok) {
+      const raw = await bridgeResp.json();
+      const list = Array.isArray(raw) ? raw : (raw.data || []);
+      processList(list);
+    }
+  } catch (e) {
+    console.warn("Bridge fetchDeviceEmployees failed", e);
+  }
+
   return Array.from(map.entries()).map(([empCode, empName]) => ({ empCode, empName }));
 };
 
