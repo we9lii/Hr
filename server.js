@@ -166,7 +166,10 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
             }
         }
 
-        else if (table === 'USERINFO') {
+        else if (table === 'USERINFO' || table === 'userinfo') {
+            console.log(`[ZKTeco] Processing USERINFO. Total lines: ${lines.length}`);
+            if (lines.length > 0) console.log(`[ZKTeco] Sample Line: ${lines[0]}`);
+
             try {
                 let count = 0;
                 for (const line of lines) {
@@ -256,7 +259,10 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
         }
 
 
-        else if (table === 'OPERLOG') {
+        // Log the incoming table type for debugging
+        console.log(`[ZKTeco] /iclock/cdata received table: ${table} from SN: ${SN}`);
+
+        if (table === 'operlog' || table === 'OPERLOG') {
             // Smart Sync: detailed handling of operation logs
             try {
                 console.log(`[Smart Sync] Operational Log received from ${SN}. Parsing contents...`);
