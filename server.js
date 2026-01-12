@@ -367,90 +367,22 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
 });
 
 const getRiyadhTime = () => {
-    const d = new Date();
-    // Add 3 hours to UTC
-    d.setHours(d.getUTCHours() + 3);
-    return d.toISOString().replace(/T/, ' ').replace(/\..+/, '');
+    // Force UTC+3 (Riyadh)
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const riyadhOffset = 3 * 60 * 60 * 1000;
+    const riyadhDate = new Date(utc + riyadhOffset);
+
+    // Format: YYYY-MM-DD HH:mm:ss
+    return riyadhDate.toISOString().replace(/T/, ' ').replace(/\..+/, '');
 };
 
-// 2. Command Check (Poll)
-let hasSentForceQuery = false; // Memory flag to send command once per server restart
-let pendingFingerprints = []; // Queue for fingerprint commands
+// ...
 
-
-// Trigger Full Sync (Users + Fingerprints)
-// Supports fetching from PHP (if available) OR accepting direct JSON payload
-app.post('/iclock/trigger_full_sync', express.json({ limit: '50mb' }), async (req, res) => {
-    try {
-        const { sn, users, fingerprints } = req.body;
-        console.log(`[ZKTeco] Triggering Full Sync for ${sn}...`);
-
-        let count = 0;
-
-        // 1. Queue Users (DATA UPDATE USERINFO)
-        if (users && Array.isArray(users)) {
-            console.log(`[ZKTeco] Queuing ${users.length} users...`);
-            users.forEach((u, idx) => {
-                // Command: DATA UPDATE USERINFO PIN=1 Name=...
-                // Ensure proper formatting
-                const cmdString = `DATA UPDATE USERINFO PIN=${u.user_id}\tName=${u.name}\tPri=${u.role}\tPasswd=${u.password}\tCard=${u.card_number}\tGrp=1`;
-                pendingFingerprints.push(`C:${2000 + idx}:${cmdString}`);
-                count++;
-            });
-        }
-
-        // 2. Queue Fingerprints (DATA UPDATE FINGERTMP)
-        if (fingerprints && Array.isArray(fingerprints)) {
-            console.log(`[ZKTeco] Queuing ${fingerprints.length} fingerprints...`);
-            fingerprints.forEach((fp, idx) => {
-                const cmdString = `DATA UPDATE FINGERTMP PIN=${fp.user_id}\tFID=${fp.finger_id}\tSize=${fp.size}\tValid=${fp.valid}\tTMP=${fp.template_data}`;
-                pendingFingerprints.push(`C:${3000 + idx}:${cmdString}`);
-                count++;
-            });
-        }
-
-
-        res.send({ status: 'success', queued: count });
-    } catch (e) {
-        console.error(e);
-        res.status(500).send({ status: 'error', message: e.message });
-    }
-});
-
-// Trigger Pull Data (Device -> Server)
-app.get('/iclock/trigger_pull', (req, res) => {
-    const { sn } = req.query;
-    if (!sn) return res.status(400).send("Missing SN");
-
-    console.log(`[ZKTeco] Scheduling PULL command for ${sn}`);
-
-    // Queue commands to pull Users and Fingerprints
-    pendingFingerprints.push(`C:9001:DATA QUERY USERINFO`);
-    pendingFingerprints.push(`C:9002:DATA QUERY FINGERTMP`);
-
-    res.send({ status: "success", message: "Pull commands queued. Reboot device to process immediately." });
-});
-
-app.all(['/iclock/getrequest', '/iclock/getrequest.php'], async (req, res) => {
-    // console.log(`[ZKTeco] Heartbeat from ${req.query.SN}`);
-
-    // Priority 1: Serve Fingerprint Commands (One by One)
-    if (pendingFingerprints.length > 0) {
-        const cmd = pendingFingerprints.shift();
-        console.log(`[ZKTeco] Sending FP Command (${pendingFingerprints.length} remaining): ${cmd.substring(0, 50)}...`);
-        return res.send(cmd);
-    }
-
-    // Priority 2: Force User Info Sync (Once)
-    if (!hasSentForceQuery) {
-        console.log(`[ZKTeco] Sending FORCE SYNC command to ${req.query.SN}`);
-        hasSentForceQuery = true;
-        // Also send date to correct time immediately
-        return res.send(`C:1:DATA QUERY USERINFO\nDate=${getRiyadhTime()}`);
-    }
-
-    // Always send server time to keep device synced
-    res.send(`OK\nDate=${getRiyadhTime()}`);
+// Always send server time to keep device synced
+const serverTime = getRiyadhTime();
+// console.log(`[ZKTeco] Sending Server Time to ${req.query.SN}: ${serverTime}`);
+res.send(`OK\nDate=${serverTime}`);
 });
 
 // 3. Command Response (When device finishes a command)
@@ -460,11 +392,10 @@ app.post(['/iclock/devicecmd', '/iclock/devicecmd.php'], express.text({ type: '*
     res.send('OK');
 });
 
-// Manual Trigger for Force Sync
 app.get('/iclock/force_sync', (req, res) => {
     hasSentForceQuery = false;
-    console.log('[Manual] Force Sync Triggered. Command will be sent on next heartbeat.');
-    res.send('Force Sync Triggered');
+    console.log('[Manual] Force Sync Reset. Device will be queried on next heartbeat.');
+    res.send('Force Sync Reset. Reboot Device now.');
 });
 
 // Apply Proxies (For other requests)

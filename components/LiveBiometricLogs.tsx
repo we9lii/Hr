@@ -52,7 +52,8 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
 
             // 2. Fetch Unified Logs (Includes Manual Absences & Correct Merging)
             const startOfDay = new Date('2024-01-01'); // Fetch all history from 2024
-            const endOfDay = new Date();     // Until Now
+            const endOfDay = new Date();
+            endOfDay.setHours(23, 59, 59, 999); // Include entire today (fix for device time ahead)
 
             // Filter specifically for the filtered Device
             const unifiedLogs = await fetchAttendanceLogsRange(startOfDay, endOfDay, undefined, 'AF4C232560143');
