@@ -64,122 +64,23 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
 
     const handleSyncEmployees = async (targetSn: string) => {
         setSyncing(true);
-        setSyncStatus('Fetching from Legacy...');
+        setSyncStatus('Requesting Device Upload...');
         try {
-            // 1. Fetch from LEGACY (Proxy) 
-            const headers = await getHeaders();
+            // Trigger Pull Data (Device -> Server)
+            // This queues "DATA QUERY USERINFO" and "DATA QUERY FINGERTMP" commands
+            // The device will execute them on next heartbeat and upload its data to server.js (which uses the bridge)
+            const res = await fetch(`${API_CONFIG.baseUrl}/iclock/trigger_pull?sn=${targetSn}`);
 
-            const path = '/personnel/api/employees/?page_size=2000';
-            const legacyRes = await fetchLegacyProxy(path, { headers });
+            if (!res.ok) throw new Error('Failed to queue commands');
+            const data = await res.json();
 
-            // Note: If auth is needed, we might need a fixed token or skipping auth if query is public/cookie-based
-            // Fallback for demo: Assuming we can get list. If not, we might need to use a hardcoded list or admin credentials.
-            // Assuming basic auth or public for 'get'.
+            setSyncStatus(`Commands Queued. Please Reboot Device.`);
 
-            if (!legacyRes.ok) throw new Error('Failed to fetch from Legacy Server');
-            const legacyData = await legacyRes.json();
-            const employees = Array.isArray(legacyData) ? legacyData : (legacyData.data || legacyData.results || []);
-
-            setSyncStatus(`Syncing ${employees.length} Users...`);
-
-            // 2. Push to NEW Server (sync_user.php)
-            // Also check if Employee Object contains biometric data inline (Common in some API versions)
-            let inlineFingerprints: any[] = [];
-            let syncedCount = 0;
-
-            for (const emp of employees) {
-                const payload = {
-                    device_sn: targetSn,
-                    user_id: emp.emp_code,
-                    name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
-                    role: 0,
-                    card_number: emp.card_number || '',
-                    password: emp.password || ''
-                };
-
-                // Check for inline biometrics
-                if (emp.fingerprints && Array.isArray(emp.fingerprints)) {
-                    inlineFingerprints.push(...emp.fingerprints);
-                } else if (emp.biometric && Array.isArray(emp.biometric)) {
-                    inlineFingerprints.push(...emp.biometric);
-                }
-
-                await fetch(`${API_CONFIG.baseUrl}/iclock/sync_user.php`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                syncedCount++;
-                if (syncedCount % 5 === 0) setSyncStatus(`Synced Users ${syncedCount}/${employees.length}...`);
-            }
-
-            // 3. Sync Fingerprints
-            // Strategy A: Use Inline Found FPs
-            let templates = inlineFingerprints;
-            let source = 'Inline';
-
-            // Strategy B: If no inline, try Fetching from Endpoints (Reduced List)
-            if (templates.length === 0) {
-                const validPaths = [
-                    '/personnel/api/emp_finger/?page_size=5000',
-                    '/biometric/api/template/?page_size=5000'
-                ];
-
-                for (const path of validPaths) {
-                    if (path.startsWith('/personnel')) {
-                        // Keep path as is
-                    } else {
-                        // Keep path as is
-                    }
-
-                    try {
-                        const res = await fetchLegacyProxy(path, { headers });
-                        if (res.ok) {
-                            const fpData = await res.json();
-                            templates = Array.isArray(fpData) ? fpData : (fpData.data || fpData.results || []);
-                            if (templates.length > 0) {
-                                source = 'Endpoint';
-                                break;
-                            }
-                        }
-                    } catch (e) { }
-                }
-            }
-
-            if (templates.length > 0) {
-                setSyncStatus(`Syncing ${templates.length} Fingerprints (${source})...`);
-                let fpCount = 0;
-                for (const t of templates) {
-                    const payload = {
-                        user_id: t.user_code || t.pin || t.user_id,
-                        finger_id: t.finger_id || t.fid || 0,
-                        template_data: t.template || t.tmp || t.fingerprint, // Cover all naming cases
-                        device_sn: targetSn
-                    };
-
-                    await fetch(`${API_CONFIG.baseUrl}/iclock/sync_fingerprint.php`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    fpCount++;
-                    if (fpCount % 10 === 0) setSyncStatus(`Synced FPs ${fpCount}/${templates.length}...`);
-                }
-            } else {
-                console.warn("No Fingerprints found (Inline or Endpoint)");
-                setSyncStatus(`Note: Users Synced. Fingerprints Not Found.`);
-            }
-
-            // 4. Trigger Force User & FP Sync Command
-            await fetch(`${API_CONFIG.baseUrl}/iclock/force_sync`);
-            // Trigger Node.js (via local proxy) to start feeding FPs to device
-            await fetch(`/local_iclock/trigger_fp_sync?sn=${targetSn}`);
-
-            setSyncStatus(`Success! Synced ${syncedCount} Employees.`);
+            // Clear status after delay
             setTimeout(() => {
                 setSyncStatus(null);
                 setSyncing(false);
-            }, 3000);
+            }, 5000);
 
         } catch (e: any) {
             console.error(e);
