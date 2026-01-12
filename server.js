@@ -3,7 +3,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import mysql from 'mysql2/promise'; // Native DB Access
+// import mysql from 'mysql2/promise'; // Native DB Access REMOVED (Using Bridge)
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,33 +11,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// DB Configuration (Matches db_connect.php)
-const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'qssunsol_qssun_user',
-    password: process.env.DB_PASSWORD || 'g3QL]cRAHvny',
-    database: process.env.DB_NAME || 'qssunsolar_qssunsolar_hr',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-};
-const pool = mysql.createPool(dbConfig);
+// DB Configuration REMOVED - Using HTTP Bridge via PHP
+// const dbConfig = { ... };
+// const pool = mysql.createPool(dbConfig);
 
-// Verify DB Connection on Startup
-(async () => {
-    try {
-        const connection = await pool.getConnection();
-        console.log(`[System] Database connection successful: ${dbConfig.host} (${dbConfig.database})`);
-        connection.release();
-    } catch (err) {
-        console.error(`[System Error] Database connection failed!`, {
-            host: dbConfig.host,
-            user: dbConfig.user,
-            error: err.message
-        });
-        console.log("Check if DB_HOST, DB_USER, DB_PASSWORD environment variables are set correctly in Render.");
-    }
-})();
+// Verify DB Connection on Startup REMOVED
+
+// Enable CORS for all routes
+app.use(cors());
+
+console.log("[System] Running in Bridge Mode (Direct DB connection disabled)");
 
 // Enable CORS for all routes
 app.use(cors());
