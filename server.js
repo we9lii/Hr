@@ -23,6 +23,22 @@ const dbConfig = {
 };
 const pool = mysql.createPool(dbConfig);
 
+// Verify DB Connection on Startup
+(async () => {
+    try {
+        const connection = await pool.getConnection();
+        console.log(`[System] Database connection successful: ${dbConfig.host} (${dbConfig.database})`);
+        connection.release();
+    } catch (err) {
+        console.error(`[System Error] Database connection failed!`, {
+            host: dbConfig.host,
+            user: dbConfig.user,
+            error: err.message
+        });
+        console.log("Check if DB_HOST, DB_USER, DB_PASSWORD environment variables are set correctly in Render.");
+    }
+})();
+
 // Enable CORS for all routes
 app.use(cors());
 
