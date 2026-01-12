@@ -188,18 +188,18 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                 let fpSyncCount = 0;
 
                 for (const line of lines) {
-                    // Check for Fingerprint
-                    if (line.includes('FP PIN=')) {
+                    // Check for Fingerprint (FP PIN) or Face (FACE PIN)
+                    if (line.includes('FP PIN=') || line.includes('FACE PIN=')) {
                         try {
                             const d = {};
                             line.split('\t').forEach(p => { const [k, v] = p.split('=', 2); if (k) d[k.trim()] = v ? v.trim() : ''; });
-                            // Sometimes parsing might be weird if tab separated key=value isn't perfect, handle 'FP PIN' key specifically
-                            // The line starts with "FP PIN=..." so the first key is "FP PIN"
-                            let userId = d['FP PIN'];
-                            // Fallback if split failed or format is different
+
+                            let userId = d['FP PIN'] || d['FACE PIN'];
+
+                            // Fallback regex
                             if (!userId) {
-                                const match = line.match(/FP PIN=(\d+)/);
-                                if (match) userId = match[1];
+                                const match = line.match(/(FP|FACE) PIN=(\d+)/);
+                                if (match) userId = match[2];
                             }
 
                             if (userId && d['TMP']) {
@@ -217,7 +217,7 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                                 fpSyncCount++;
                             }
                         } catch (err) {
-                            console.error("Error parsing FP line in OPERLOG:", err.message);
+                            console.error("Error parsing FP/FACE line in OPERLOG:", err.message);
                         }
                     }
                     // Otherwise try User Info
@@ -227,7 +227,7 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                 }
 
                 if (userSyncCount > 0 || fpSyncCount > 0) {
-                    console.log(`[Smart Sync] Processed ${userSyncCount} users and ${fpSyncCount} fingerprints from OPERLOG.`);
+                    console.log(`[Smart Sync] Processed ${userSyncCount} users and ${fpSyncCount} templates from OPERLOG.`);
                 } else {
                     console.log(`[Smart Sync] No actionable data in OPERLOG.`);
                 }
