@@ -22,6 +22,10 @@ app.use(cors());
 
 console.log("[System] Running in Bridge Mode (Direct DB connection disabled)");
 
+// Global State for Device Commands
+let pendingFingerprints = [];
+let hasSentForceQuery = false;
+
 // Enable CORS for all routes
 app.use(cors());
 
