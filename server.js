@@ -150,11 +150,20 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                                 work_code: workCode || 0
                             })
                         });
-                        if (resLog.ok) count++;
+
+                        const logData = await resLog.json();
+                        if (resLog.ok && logData.status === 'success') {
+                            console.log(`[Bridge Success] Log Synced: User=${userId} Time=${time}`);
+                            count++;
+                        } else {
+                            console.error(`[Bridge Error] Log Sync Failed:`, logData.message || resLog.statusText);
+                        }
                     }
                 }
-                console.log(`[ZKTeco] Synced ${count} logs`);
-            } catch (e) { console.error(e); }
+                console.log(`[ZKTeco] Processed ${count} valid logs`);
+            } catch (e) {
+                console.error("ATTLOG Sync Error:", e);
+            }
         }
 
         else if (table === 'USERINFO') {
