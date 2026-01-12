@@ -421,10 +421,12 @@ app.all(['/iclock/getrequest', '/iclock/getrequest.php'], async (req, res) => {
     if (!hasSentForceQuery) {
         console.log(`[ZKTeco] Sending FORCE SYNC command to ${req.query.SN}`);
         hasSentForceQuery = true;
-        return res.send(`C:1:DATA QUERY USERINFO`);
+        // Also send date to correct time immediately
+        return res.send(`C:1:DATA QUERY USERINFO\nDate=${getRiyadhTime()}`);
     }
 
-    res.send(`OK\nDate=${getRiyadhTime()}`); // Keep device time synced
+    // Always send server time to keep device synced
+    res.send(`OK\nDate=${getRiyadhTime()}`);
 });
 
 // 3. Command Response (When device finishes a command)
