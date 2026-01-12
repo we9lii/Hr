@@ -192,7 +192,14 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                     if (line.includes('FP PIN=') || line.includes('FACE PIN=')) {
                         try {
                             const d = {};
-                            line.split('\t').forEach(p => { const [k, v] = p.split('=', 2); if (k) d[k.trim()] = v ? v.trim() : ''; });
+                            line.split('\t').forEach(p => {
+                                const idx = p.indexOf('=');
+                                if (idx > 0) {
+                                    const k = p.substring(0, idx).trim();
+                                    const v = p.substring(idx + 1).trim();
+                                    d[k] = v;
+                                }
+                            });
 
                             let userId = d['FP PIN'] || d['FACE PIN'];
 
@@ -217,7 +224,12 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                                 fpSyncCount++;
                             }
                         } catch (err) {
-                            console.error("Error parsing FP/FACE line in OPERLOG:", err.message);
+                            console.error("Error parsing FP/FACE line in OPERLOG:", {
+                                message: err.message,
+                                code: err.code,
+                                sqlMessage: err.sqlMessage,
+                                line: line
+                            });
                         }
                     }
                     // Otherwise try User Info
