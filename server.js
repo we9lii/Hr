@@ -176,19 +176,31 @@ app.all(['/iclock/cdata', '/iclock/cdata.php'], express.text({ type: '*/*' }), a
                     parts.forEach(p => { const [k, v] = p.split('=', 2); if (k) d[k.trim()] = v ? v.trim() : ''; });
 
                     if (d['PIN'] && d['TMP']) {
-                        const sql = `INSERT INTO fingerprint_templates (user_id, finger_id, template_data, size, device_sn, valid) 
-                                     VALUES (?, ?, ?, ?, ?, ?) 
-                                     ON DUPLICATE KEY UPDATE template_data=VALUES(template_data), size=VALUES(size), valid=VALUES(valid), device_sn=VALUES(device_sn)`;
+                        // Valid Data - Send to PHP Bridge (Bypassing Port 3306 Block)
+                        try {
+                            const response = await fetch(FINGERPRINT_SYNC_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    user_id: d['PIN'],
+                                    finger_id: d['FID'] || 0,
+                                    template_data: d['TMP'],
+                                    size: d['Size'] || d['TMP'].length,
+                                    valid: d['Valid'] || 1,
+                                    device_sn: SN
+                                })
+                            });
 
-                        await pool.execute(sql, [
-                            d['PIN'],
-                            d['FID'] || 0,
-                            d['TMP'],
-                            d['Size'] || d['TMP'].length,
-                            SN,
-                            d['Valid'] || 1
-                        ]);
-                        count++;
+                            const result = await response.json();
+                            if (result.status === 'success') {
+                                console.log(`[Bridge Success] Saved Template: User=${d['PIN']} FID=${d['FID']}`);
+                                count++;
+                            } else {
+                                console.error(`[Bridge Error] PHP Script Failed:`, result.message);
+                            }
+                        } catch (bridgeErr) {
+                            console.error(`[Bridge Network Error] Failed to contact PHP script:`, bridgeErr.message);
+                        }
                     }
                 }
                 console.log(`[ZKTeco] Synced ${count} fingerprints.`);
