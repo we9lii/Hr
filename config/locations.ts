@@ -83,9 +83,9 @@ export const LOCATIONS: LocationConfig[] = [
     },
     {
         id: 'TEST_DEV',
-        name: 'جهاز تجريبي ( فيصل )',
-        lat: 0, // Requires Update
-        lng: 0,
+        name: 'محلات القصيم 2',
+        lat: 26.352333,
+        lng: 43.950250,
         radius: 25,
         active: true
     }

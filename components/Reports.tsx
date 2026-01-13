@@ -195,7 +195,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       const deviceConfig = getDeviceConfig({
         sn: firstIn.deviceSn || 'UNKNOWN',
         alias: firstIn.deviceAlias
-      });
+      }, firstIn.timestamp);
       const shifts = deviceConfig.shifts || [];
       const shiftType = deviceConfig.shiftType || 'SPLIT';
 
@@ -443,7 +443,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     const deviceConfig = getDeviceConfig({
       sn: log.deviceSn || 'UNKNOWN_SN',
       alias: log.deviceAlias
-    });
+    }, log.timestamp);
 
     const checkInTime = new Date(log.timestamp);
     const shifts = deviceConfig.shifts;
@@ -662,7 +662,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       const deviceConfig = getDeviceConfig({
         sn: firstIn?.deviceSn || 'UNKNOWN',
         alias: firstIn?.deviceAlias
-      });
+      }, firstIn?.timestamp || dayLogs[0].timestamp);
       const shifts = deviceConfig.shifts || [];
       const shiftType = deviceConfig.shiftType || 'SPLIT';
 
@@ -2117,20 +2117,6 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                     </button>
                   )}
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-600 dark:text-slate-400">الجهاز</label>
-                <select
-                  value={printConfig.deviceSn}
-                  onChange={e => setPrintConfig({ ...printConfig, deviceSn: e.target.value })}
-                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="ALL">جميع الأجهزة</option>
-                  {devices.map(d => (
-                    <option key={d.sn} value={d.sn}>{d.alias || d.sn}</option>
-                  ))}
-                </select>
               </div>
 
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 flex items-start gap-3">

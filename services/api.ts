@@ -46,7 +46,7 @@ const parsePunchState = (state: string | number): 'CHECK_IN' | 'CHECK_OUT' | 'BR
 const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): boolean => {
   if (!deviceSn && !deviceAlias) return false; // Cannot determine without device context
 
-  const config = getDeviceConfig({ sn: deviceSn || '', alias: deviceAlias });
+  const config = getDeviceConfig({ sn: deviceSn || '', alias: deviceAlias }, punchTime);
   const shifts = config.shifts;
 
   if (!shifts || shifts.length === 0) return false;

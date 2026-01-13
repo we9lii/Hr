@@ -6,6 +6,7 @@ import {
 import { motion } from 'framer-motion';
 import { Activity, Clock, Users, UserCheck, UserX, AlertCircle, Calendar, ArrowUpRight, ArrowDownRight, MoreHorizontal, Filter, Wifi, Radar, RefreshCw, CheckCircle, XCircle, Monitor, AlertTriangle } from 'lucide-react';
 import { DashboardStats, AttendanceRecord, Device } from '../types';
+import { getDeviceConfig } from '../config/shifts';
 
 interface ModernDashboardProps {
     stats: DashboardStats | null;
@@ -235,9 +236,7 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                             <td className="p-2 md:p-3 font-bold text-white text-[10px] md:text-sm">{log.employeeName}</td>
                                             <td className="p-2 md:p-5">
                                                 <span className="text-[10px] md:text-xs text-slate-400 truncate max-w-[100px] md:max-w-[200px] block" title={log.location?.address}>
-                                                    {log.location?.address || log.deviceAlias || (
-                                                        (log.deviceSn === 'Web' || log.deviceSn === 'Manual-Web') ? 'تطبيق الجوال' : (log.deviceSn || '-')
-                                                    )}
+                                                    {log.location?.address || getDeviceConfig({ sn: log.deviceSn || '', alias: log.deviceAlias }).alias}
                                                 </span>
                                                 {/* Accuracy Indicator */}
                                                 {log.accuracy !== undefined && (

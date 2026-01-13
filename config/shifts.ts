@@ -5,9 +5,15 @@ export interface ShiftConfig {
     end: string;
 }
 
+export interface ShiftHistory {
+    effectiveDate: string; // YYYY-MM-DD (Date when the main 'shifts' config became active)
+    shifts: ShiftConfig[]; // The OLD shifts used BEFORE effectiveDate
+}
+
 export interface DeviceRule {
     matcher: (device: Device | { sn: string, alias?: string }) => boolean;
-    shifts: ShiftConfig[];
+    shifts: ShiftConfig[]; // CURRENT active shifts
+    history?: ShiftHistory[]; // History of previous configs
     aliasOverride?: string;
     shiftType?: 'SPLIT' | 'ALTERNATING'; // SPLIT = Works both shifts (default). ALTERNATING = Works one of them.
 }
@@ -58,10 +64,19 @@ export const DEVICE_RULES: DeviceRule[] = [
     // 4. المحلات القصيم (Qassim Shops)
     {
         matcher: (d) => (d.alias || '').includes('المحلات') || ((d.alias || '').includes('محلات') && (d.alias || '').includes('القصيم')),
+        // NEW SHIFTS (Effective from Jan 14, 2026)
         shifts: [
             { start: '08:00', end: '12:00' },
-            { start: '15:15', end: '20:15' }
+            { start: '15:30', end: '20:30' }
         ],
+        // HISTORY (Old Shifts before Jan 14)
+        history: [{
+            effectiveDate: '2026-01-14',
+            shifts: [
+                { start: '08:00', end: '12:00' },
+                { start: '15:15', end: '20:15' }
+            ]
+        }],
         aliasOverride: 'محلات القصيم'
     },
     // 5. الدمام (Dammam)
@@ -112,11 +127,20 @@ export const DEVICE_RULES: DeviceRule[] = [
     // 11. جهاز تجريبي ( فيصل ) (Developers Device - Local Testing)
     {
         matcher: (d) => d.sn === 'AF4C232560143' || (d.alias || '').includes('Test'),
+        // NEW SHIFTS (Effective from Jan 14, 2026)
         shifts: [
             { start: '08:00', end: '12:00' },
-            { start: '15:15', end: '20:15' }
+            { start: '15:30', end: '20:30' }
         ],
-        aliasOverride: 'جهاز تجريبي ( فيصل )'
+        // HISTORY (Old Shifts before Jan 14)
+        history: [{
+            effectiveDate: '2026-01-14',
+            shifts: [
+                { start: '08:00', end: '12:00' },
+                { start: '15:15', end: '20:15' }
+            ]
+        }],
+        aliasOverride: 'محلات القصيم 2'
     }
 ];
 
@@ -126,14 +150,41 @@ export const DEFAULT_SHIFTS: ShiftConfig[] = [
 
 
 // Helper function to resolve config for a device
-export const getDeviceConfig = (device: { sn: string; alias?: string; }) => {
+export const getDeviceConfig = (device: { sn: string; alias?: string; }, targetDate?: Date | string) => {
     // 1. Try to find a matching rule
     const rule = DEVICE_RULES.find(r => r.matcher(device));
 
-    // 2. Return config or defaults
+    if (!rule) {
+        return {
+            alias: device.alias || `جهاز ${device.sn}`,
+            shifts: DEFAULT_SHIFTS,
+            shiftType: 'SPLIT'
+        };
+    }
+
+    // 2. Resolve Shifts based on Date
+    let activeShifts = rule.shifts;
+
+    if (targetDate && rule.history) {
+        const d = (targetDate instanceof Date) ? targetDate : new Date(targetDate);
+        // Normalize to YYYY-MM-DD for string comparison
+        const dateStr = d.toISOString().split('T')[0];
+
+        // Sort history by effectiveDate DESC to find the appropriate range, OR simply check specific cutoffs.
+        // Logic: If current date < effectiveDate, use the history shifts.
+        // We assume history entries are "Old configs that were replaced on effectiveDate".
+
+        for (const h of rule.history) {
+            if (dateStr < h.effectiveDate) {
+                activeShifts = h.shifts;
+                break; // Found the applicable old config
+            }
+        }
+    }
+
     return {
-        alias: rule?.aliasOverride || device.alias || `جهاز ${device.sn}`,
-        shifts: rule?.shifts && rule.shifts.length > 0 ? rule.shifts : DEFAULT_SHIFTS,
-        shiftType: rule?.shiftType || 'SPLIT'
+        alias: rule.aliasOverride || device.alias || `جهاز ${device.sn}`,
+        shifts: activeShifts && activeShifts.length > 0 ? activeShifts : DEFAULT_SHIFTS,
+        shiftType: rule.shiftType || 'SPLIT'
     };
 };

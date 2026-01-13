@@ -56,7 +56,7 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
             endOfDay.setHours(23, 59, 59, 999); // Include entire today (fix for device time ahead)
 
             // Filter specifically for the filtered Device
-            const unifiedLogs = await fetchAttendanceLogsRange(startOfDay, endOfDay, undefined, 'AF4C232560143');
+            const unifiedLogs = await fetchAttendanceLogsRange(startOfDay, endOfDay);
 
             // Sort by time DESC
             const sorted = unifiedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -154,7 +154,7 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                 <div className="p-6 border-b border-slate-800/60 flex justify-between items-center bg-gradient-to-r from-slate-900/50 to-slate-800/50">
                     <div className="flex items-center gap-3">
                         <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
-                        <h3 className="font-bold text-white tracking-wide">جهاز تجربة ( فيصل )</h3>
+                        <h3 className="font-bold text-white tracking-wide">سجل الحركات الحية</h3>
                     </div>
                     <span className="text-xs font-mono text-slate-500 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800">
                         Total: {logs.length}
@@ -222,10 +222,10 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                                             ) : (
                                                 <div className="flex flex-col items-start gap-1">
                                                     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border shadow-[0_0_10px_rgba(0,0,0,0.1)] ${log.type === 'CHECK_IN' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]' :
-                                                            log.type === 'CHECK_OUT' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' :
-                                                                log.type === 'BREAK_OUT' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]' :
-                                                                    log.type === 'BREAK_IN' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]' :
-                                                                        'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                                                        log.type === 'CHECK_OUT' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' :
+                                                            log.type === 'BREAK_OUT' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]' :
+                                                                log.type === 'BREAK_IN' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]' :
+                                                                    'bg-slate-500/10 text-slate-400 border-slate-500/20'
                                                         }`}>
                                                         {log.type === 'CHECK_IN' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>}
                                                         {log.type === 'CHECK_IN' ? 'تسجيل دخول' :
@@ -249,7 +249,7 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                                                 <div className="flex flex-col gap-1">
                                                     <span className="text-white font-bold flex items-center gap-1.5">
                                                         {log.deviceSn?.includes('Mobile') || log.deviceAlias?.includes('تطبيق') ? <Smartphone size={14} className="text-blue-400" /> : <Wifi size={14} className="text-purple-400" />}
-                                                        {getDeviceName(log.deviceSn || '', log.deviceAlias)}
+                                                        {getDeviceConfig({ sn: log.deviceSn || '', alias: log.deviceAlias }).alias}
                                                     </span>
                                                     <span className="text-[10px] font-mono opacity-50 bg-black/20 w-fit px-1.5 rounded">{log.deviceSn}</span>
                                                 </div>
