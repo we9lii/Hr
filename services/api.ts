@@ -926,21 +926,47 @@ export const submitBiometricAttendance = async (
 };
 
 /**
+ * UPLOAD PROOF FILE
+ */
+export const uploadProof = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  let url = `/biometric_api/api/upload_proof.php`;
+  if (Capacitor.isNativePlatform()) {
+    url = `https://qssun.solar/api/api/upload_proof.php`;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) throw new Error("Upload Failed");
+  const data = await response.json();
+  if (data.status !== 'success') throw new Error(data.message);
+
+  return data.url;
+};
+
+/**
  * SUBMIT MANUAL ATTENDANCE
  * Used by HR for adjustments
  */
 export const submitManualAttendance = async (
   employeeId: string,
   timestamp: Date,
-  type: 'CHECK_IN' | 'CHECK_OUT'
+  type: 'CHECK_IN' | 'CHECK_OUT',
+  note?: string
 ): Promise<boolean> => {
   try {
     const payload = {
       emp_code: employeeId,
       punch_time: timestamp.toISOString(),
       punch_state: type === 'CHECK_IN' ? '0' : '1',
-      verify_mode: '15', // 15 often denotes Manual/Admin in ZK/API
-      area_alias: 'Manual Adjustment'
+      verify_mode: '15', // 15 = Manual
+      area_alias: note || 'Manual Adjustment',
+      terminal_alias: note || 'Manual'
     };
 
     const headers = await getHeaders();

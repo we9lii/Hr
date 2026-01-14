@@ -23,6 +23,25 @@ export interface DeviceRule {
 // ----------------------------------------------------------------------
 
 export const DEVICE_RULES: DeviceRule[] = [
+    // 11. جهاز تجريبي ( فيصل ) (Developers Device - Local Testing)
+    {
+        matcher: (d) => d.sn === 'AF4C232560143' || (d.alias || '').includes('Test'),
+        // NEW SHIFTS (Effective from Jan 14, 2026)
+        shifts: [
+            { start: '08:00', end: '12:00' },
+            { start: '15:30', end: '20:30' }
+        ],
+        // HISTORY (Old Shifts before Jan 14)
+        history: [{
+            effectiveDate: '2026-01-14',
+            shifts: [
+                { start: '08:00', end: '12:00' },
+                { start: '15:15', end: '20:15' }
+            ]
+        }],
+        aliasOverride: 'محلات القصيم ( 2 )'
+    },
+
     // 1. الصرار (Al-Sarrar)
     {
         matcher: (d) => (d.alias || '').includes('الصرار'),
@@ -124,24 +143,7 @@ export const DEVICE_RULES: DeviceRule[] = [
         ],
         aliasOverride: 'فرع طبرجل'
     },
-    // 11. جهاز تجريبي ( فيصل ) (Developers Device - Local Testing)
-    {
-        matcher: (d) => d.sn === 'AF4C232560143' || (d.alias || '').includes('Test'),
-        // NEW SHIFTS (Effective from Jan 14, 2026)
-        shifts: [
-            { start: '08:00', end: '12:00' },
-            { start: '15:30', end: '20:30' }
-        ],
-        // HISTORY (Old Shifts before Jan 14)
-        history: [{
-            effectiveDate: '2026-01-14',
-            shifts: [
-                { start: '08:00', end: '12:00' },
-                { start: '15:15', end: '20:15' }
-            ]
-        }],
-        aliasOverride: 'محلات القصيم 2'
-    }
+
 ];
 
 export const DEFAULT_SHIFTS: ShiftConfig[] = [

@@ -102,7 +102,7 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                         <div className="p-3 bg-blue-500/10 rounded-2xl backdrop-blur-sm border border-blue-500/20 text-blue-400">
                             <Clock size={24} />
                         </div>
-                        السجل الحي للبصمة
+                        سجل الحركات الحية
                     </h2>
                     <p className="text-slate-400 text-sm font-medium mt-2 mr-14">
                         مراقبة حية للحضور والانصراف - مزامنة الأسماء مفعلة
@@ -129,25 +129,7 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                 </div>
             </div>
 
-            {/* Devices Status Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {devices.map(device => (
-                    <div key={device.serial_number} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-                        <div className="flex items-center gap-3">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${device.status === 'ONLINE' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-800 text-slate-400'}`}>
-                                <Wifi size={20} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-white text-sm">{device.device_name || 'جهاز بصمة'}</h3>
-                                <p className="text-xs text-slate-400 font-mono">{device.serial_number}</p>
-                            </div>
-                        </div>
-                        <div className={`px-2 py-1 rounded-lg text-[10px] font-bold ${device.status === 'ONLINE' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
-                            {new Date(device.last_activity + ' UTC').toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                    </div>
-                ))}
-            </div>
+
 
             {/* Live Logs Table */}
             <div className="bg-slate-900/40 backdrop-blur-xl rounded-[32px] border border-slate-800/60 shadow-2xl overflow-hidden min-h-[500px] flex flex-col">

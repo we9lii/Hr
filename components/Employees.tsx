@@ -30,6 +30,14 @@ const Employees: React.FC = () => {
         punch_state: '0',
         purpose: ''
     });
+    const [isBulk, setIsBulk] = useState(false);
+    const [bulkData, setBulkData] = useState({
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
+        startTime: '08:00',
+        endTime: '16:00',
+        includeWeekends: false
+    });
     // Edit/Delete Logs State
     const [activeTab, setActiveTab] = useState<'employees' | 'logs'>('employees');
     const [logs, setLogs] = useState<any[]>([]);
@@ -192,45 +200,77 @@ const Employees: React.FC = () => {
         }
 
         // VALIDATION: If Absence (State 4), Reason is mandatory
-        if (manualData.punch_state === '4' && !manualData.purpose.trim()) {
+        if (!isBulk && manualData.punch_state === '4' && !manualData.purpose.trim()) {
             alert('⚠️ يجب كتابة سبب الغياب عند اختيار حالة "غياب".');
             return;
         }
 
         setSubmitting(true);
-        setSubmitting(true);
         try {
-            // Convert local input time to "YYYY-MM-DD HH:mm:ss"
-            const pTime = manualData.punch_time.replace('T', ' ') + ':00'; // Append seconds
+            if (isBulk) {
+                const start = new Date(bulkData.startDate);
+                const end = new Date(bulkData.endDate);
+                let count = 0;
 
-            let finalState = manualData.punch_state;
-            let finalPurpose = manualData.purpose;
+                // Loop through dates
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    // Weekend Check (Fri=5, Sat=6)
+                    if (!bulkData.includeWeekends && (d.getDay() === 5 || d.getDay() === 6)) continue;
 
-            // Handle Custom "Absence" State (100)
-            if (manualData.punch_state === '100') {
-                finalState = '0'; // Record as Check-In (or 1 Check-Out) to register event
-                finalPurpose = `غياب: ${manualData.purpose}`;
-            }
+                    const dateStr = d.toISOString().split('T')[0];
 
-            if (editLogId) {
-                await updateTransaction(editLogId, {
-                    punch_time: pTime,
-                    punch_state: finalState,
-                    purpose: finalPurpose
-                });
-                alert('تم تعديل السجل بنجاح ✅');
-                if (activeTab === 'logs') loadManualLogs();
+                    // 1. Check In
+                    await createManualTransaction({
+                        emp_code: manualData.emp_code,
+                        punch_time: `${dateStr} ${bulkData.startTime}:00`,
+                        punch_state: '0', // Check In
+                        purpose: manualData.purpose || 'تحضير يدوي (فترة)'
+                    });
+
+                    // 2. Check Out
+                    await createManualTransaction({
+                        emp_code: manualData.emp_code,
+                        punch_time: `${dateStr} ${bulkData.endTime}:00`,
+                        punch_state: '1', // Check Out
+                        purpose: manualData.purpose || 'تحضير يدوي (فترة)'
+                    });
+                    count++;
+                }
+
+                alert(`تم تسجيل الحضور لـ ${count} أيام عمل بنجاح ✅`);
             } else {
-                await createManualTransaction({
-                    emp_code: manualData.emp_code,
-                    punch_time: pTime,
-                    punch_state: finalState,
-                    purpose: finalPurpose
-                });
-                alert('تم تسجيل الملاحظة / الحركة بنجاح ✅');
-                if (activeTab === 'logs') loadManualLogs();
+                // Single Transaction Logic
+                // Convert local input time to "YYYY-MM-DD HH:mm:ss"
+                const pTime = manualData.punch_time.replace('T', ' ') + ':00'; // Append seconds
+
+                let finalState = manualData.punch_state;
+                let finalPurpose = manualData.purpose;
+
+                // Handle Custom "Absence" State (100)
+                if (manualData.punch_state === '100') {
+                    finalState = '0'; // Record as Check-In (or 1 Check-Out) to register event
+                    finalPurpose = `غياب: ${manualData.purpose}`;
+                }
+
+                if (editLogId) {
+                    await updateTransaction(editLogId, {
+                        punch_time: pTime,
+                        punch_state: finalState,
+                        purpose: finalPurpose
+                    });
+                    alert('تم تعديل السجل بنجاح ✅');
+                } else {
+                    await createManualTransaction({
+                        emp_code: manualData.emp_code,
+                        punch_time: pTime,
+                        punch_state: finalState,
+                        purpose: finalPurpose
+                    });
+                    alert('تم تسجيل الملاحظة / الحركة بنجاح ✅');
+                }
             }
 
+            if (activeTab === 'logs') loadManualLogs();
             setIsManualModalOpen(false);
         } catch (err: any) {
             alert(err.message);
@@ -787,41 +827,120 @@ const Employees: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Time & State Row */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-300">وقت التسجيل <span className="text-red-500">*</span></label>
-                                    <div className="relative">
-                                        <input
-                                            type="datetime-local"
-                                            required
-                                            value={manualData.punch_time}
-                                            onChange={e => setManualData({ ...manualData, punch_time: e.target.value })}
-                                            className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
-                                        />
-                                        <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-300">الحالة <span className="text-red-500">*</span></label>
-                                    <div className="relative">
-                                        <select
-                                            value={manualData.punch_state}
-                                            onChange={e => setManualData({ ...manualData, punch_state: e.target.value })}
-                                            className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none appearance-none"
-                                        >
-                                            <option value="0">تسجيل دخول (Check In)</option>
-                                            <option value="1">تسجيل خروج (Check Out)</option>
-                                            <option value="100">⚠️ غياب (Absence)</option> {/* Custom Logic */}
-                                            <option value="4">بداية إضافي (Overtime In)</option>
-                                            <option value="5">نهاية إضافي (Overtime Out)</option>
-                                            <option value="2">بداية استراحة (Break Out)</option>
-                                            <option value="3">نهاية استراحة (Break In)</option>
-                                        </select>
-                                    </div>
-                                </div>
+                            {/* Mode Toggle */}
+                            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsBulk(false)}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!isBulk ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                                >
+                                    حركة واحدة
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsBulk(true)}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${isBulk ? 'bg-purple-900/30 text-purple-400 border border-purple-500/30 shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                                >
+                                    فترة (أيام متعددة)
+                                </button>
                             </div>
+
+                            {/* Dynamic Inputs */}
+                            {isBulk ? (
+                                <div className="space-y-4 animate-fade-in">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">من تاريخ</label>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={bulkData.startDate}
+                                                onChange={e => setBulkData({ ...bulkData, startDate: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">إلى تاريخ</label>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={bulkData.endDate}
+                                                onChange={e => setBulkData({ ...bulkData, endDate: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">وقت الدخول</label>
+                                            <input
+                                                type="time"
+                                                required
+                                                value={bulkData.startTime}
+                                                onChange={e => setBulkData({ ...bulkData, startTime: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none ltr"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">وقت الخروج</label>
+                                            <input
+                                                type="time"
+                                                required
+                                                value={bulkData.endTime}
+                                                onChange={e => setBulkData({ ...bulkData, endTime: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none ltr"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            id="includeWeekends"
+                                            checked={bulkData.includeWeekends}
+                                            onChange={e => setBulkData({ ...bulkData, includeWeekends: e.target.checked })}
+                                            className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                                        />
+                                        <label htmlFor="includeWeekends" className="text-sm text-slate-400 select-none cursor-pointer">
+                                            تضمين أيام العطلة الأسبوعية (الجمعة والسبت)
+                                        </label>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-300">وقت التسجيل <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <input
+                                                type="datetime-local"
+                                                required
+                                                value={manualData.punch_time}
+                                                onChange={e => setManualData({ ...manualData, punch_time: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
+                                            />
+                                            <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-300">الحالة <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <select
+                                                value={manualData.punch_state}
+                                                onChange={e => setManualData({ ...manualData, punch_state: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none appearance-none"
+                                            >
+                                                <option value="0">تسجيل دخول (Check In)</option>
+                                                <option value="1">تسجيل خروج (Check Out)</option>
+                                                <option value="100">⚠️ غياب (Absence)</option>
+                                                <option value="4">بداية إضافي (Overtime In)</option>
+                                                <option value="5">نهاية إضافي (Overtime Out)</option>
+                                                <option value="2">بداية استراحة (Break Out)</option>
+                                                <option value="3">نهاية استراحة (Break In)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Reason / Purpose */}
                             <div className="space-y-2">

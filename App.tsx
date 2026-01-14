@@ -174,7 +174,8 @@ const App: React.FC = () => {
       const user = await loginUser(username, password);
 
       // RESTRICTION: Employees can only login via Native App (Android/iOS)
-      if (user.role === 'EMPLOYEE' && !Capacitor.isNativePlatform()) {
+      // Exception for Developer/Admin Account specific exemptions if needed
+      if (user.role === 'EMPLOYEE' && !Capacitor.isNativePlatform() && user.name !== 'Faisal ALnutayfi') {
         throw new Error("يرجى الدخول عن طريق التطبيق ، في حال عدم توفر التطبيق يرجى تواصل مع الدعم للحصول على نسختك");
       }
 

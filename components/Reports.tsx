@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { AttendanceRecord, Device } from '../types';
-import { fetchDeviceEmployees, fetchAttendanceLogsRange, submitManualAttendance, fetchAllEmployees } from '../services/api';
-import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus, Printer, Search } from 'lucide-react';
+import { fetchDeviceEmployees, fetchAttendanceLogsRange, submitManualAttendance, fetchAllEmployees, uploadProof } from '../services/api';
+import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus, Printer, Search, Check } from 'lucide-react';
 import { getDeviceConfig } from '../config/shifts';
 
 interface ReportsProps {
@@ -43,11 +43,18 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
   // Manual Entry State
   const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [isBulk, setIsBulk] = useState(false);
   const [manualForm, setManualForm] = useState({
     empCode: '',
     date: new Date().toISOString().split('T')[0],
     time: '08:00',
-    type: 'CHECK_IN' as 'CHECK_IN' | 'CHECK_OUT'
+    type: 'CHECK_IN' as 'CHECK_IN' | 'CHECK_OUT',
+    endDate: new Date().toISOString().split('T')[0],
+    startTime: '08:00',
+    endTime: '16:00',
+    includeWeekends: false,
+    note: '',
+    file: null as File | null
   });
   const [manualSubmitting, setManualSubmitting] = useState(false);
 
@@ -91,14 +98,61 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     if (!manualForm.empCode) return alert("يرجى اختيار موظف");
     setManualSubmitting(true);
     try {
-      const [y, m, d] = manualForm.date.split('-').map(Number);
-      const [hh, mm] = manualForm.time.split(':').map(Number);
-      const timestamp = new Date(y, m - 1, d, hh, mm);
+      let finalNote = manualForm.note;
 
-      await submitManualAttendance(manualForm.empCode, timestamp, manualForm.type);
+      // Upload File if selected
+      if (manualForm.file) {
+        try {
+          const url = await uploadProof(manualForm.file);
+          finalNote += ` [مرفق: ${url}]`;
+        } catch (e) {
+          if (!confirm("فشل رفع المرفق، هل تريد المتابعة بدونه؟")) {
+            setManualSubmitting(false);
+            return;
+          }
+        }
+      }
+
+      if (isBulk) {
+        // Bulk Logic
+        const start = new Date(manualForm.date);
+        const end = new Date(manualForm.endDate);
+        let count = 0;
+
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          // Weekend Check (Fri=5, Sat=6)
+          if (!manualForm.includeWeekends && (d.getDay() === 5 || d.getDay() === 6)) continue;
+
+          // Check In
+          const [hOn, mOn] = manualForm.startTime.split(':').map(Number);
+          const timeOn = new Date(d);
+          timeOn.setHours(hOn, mOn, 0, 0);
+
+          // Check Out
+          const [hOff, mOff] = manualForm.endTime.split(':').map(Number);
+          const timeOff = new Date(d);
+          timeOff.setHours(hOff, mOff, 0, 0);
+
+          await submitManualAttendance(manualForm.empCode, timeOn, 'CHECK_IN', finalNote);
+          await submitManualAttendance(manualForm.empCode, timeOff, 'CHECK_OUT', finalNote);
+          count++;
+        }
+        alert(`تم تسجيل الحضور لـ ${count} أيام عمل بنجاح`);
+
+      } else {
+        // Single Logic
+        const [y, m, d] = manualForm.date.split('-').map(Number);
+        const [hh, mm] = manualForm.time.split(':').map(Number);
+        const timestamp = new Date(y, m - 1, d, hh, mm);
+
+        await submitManualAttendance(manualForm.empCode, timestamp, manualForm.type, finalNote);
+        alert("تم تسجيل الحركة بنجاح");
+      }
 
       setManualModalOpen(false);
-      alert("تم تسجيل الحركة بنجاح");
+
+      // Reset Form partially
+      setManualForm(prev => ({ ...prev, note: '', file: null }));
 
       // Refresh Data
       setRangeLoading(true);
@@ -2174,42 +2228,160 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">التاريخ</label>
-                    <input
-                      type="date"
-                      value={manualForm.date}
-                      onChange={(e) => setManualForm(f => ({ ...f, date: e.target.value }))}
-                      className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">الوقت</label>
-                    <input
-                      type="time"
-                      value={manualForm.time}
-                      onChange={(e) => setManualForm(f => ({ ...f, time: e.target.value }))}
-                      className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white"
-                    />
-                  </div>
+                {/* Mode Toggle */}
+                <div className="flex bg-slate-800/50 p-1 rounded-2xl border border-slate-700/50 mb-4">
+                  <button
+                    onClick={() => setIsBulk(false)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${!isBulk ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                  >
+                    حركة واحدة
+                  </button>
+                  <button
+                    onClick={() => setIsBulk(true)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${isBulk ? 'bg-purple-900/30 text-purple-400 border border-purple-500/30 shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                  >
+                    فترة (أيام متعددة)
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">نوع الحركة</label>
-                  <div className="flex bg-slate-800/50 p-1.5 rounded-2xl border border-slate-700/50">
-                    <button
-                      onClick={() => setManualForm(f => ({ ...f, type: 'CHECK_IN' }))}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${manualForm.type === 'CHECK_IN' ? 'bg-slate-700 text-green-400 shadow-sm' : 'text-slate-400'}`}
-                    >
-                      تسجيل دخول
-                    </button>
-                    <button
-                      onClick={() => setManualForm(f => ({ ...f, type: 'CHECK_OUT' }))}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${manualForm.type === 'CHECK_OUT' ? 'bg-slate-700 text-red-400 shadow-sm' : 'text-slate-400'}`}
-                    >
-                      تسجيل خروج
-                    </button>
+                {isBulk ? (
+                  /* BULK MODE INPUTS */
+                  <div className="space-y-4 animate-fade-in">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">من تاريخ</label>
+                        <input
+                          type="date"
+                          value={manualForm.date}
+                          onChange={(e) => setManualForm(f => ({ ...f, date: e.target.value }))}
+                          className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">إلى تاريخ</label>
+                        <input
+                          type="date"
+                          value={manualForm.endDate}
+                          onChange={(e) => setManualForm(f => ({ ...f, endDate: e.target.value }))}
+                          className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">وقت الدخول</label>
+                        <input
+                          type="time"
+                          value={manualForm.startTime}
+                          onChange={(e) => setManualForm(f => ({ ...f, startTime: e.target.value }))}
+                          className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white ltr"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">وقت الخروج</label>
+                        <input
+                          type="time"
+                          value={manualForm.endTime}
+                          onChange={(e) => setManualForm(f => ({ ...f, endTime: e.target.value }))}
+                          className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white ltr"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded bg-slate-800 border-slate-600 text-purple-600 focus:ring-purple-500"
+                        checked={manualForm.includeWeekends}
+                        onChange={(e) => setManualForm(f => ({ ...f, includeWeekends: e.target.checked }))}
+                        id="weekendCheck"
+                      />
+                      <label htmlFor="weekendCheck" className="text-xs text-slate-300 font-bold cursor-pointer select-none">
+                        تضمين أيام العطلة الأسبوعية (الجمعة/السبت)
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  /* SINGLE MODE INPUTS */
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">التاريخ</label>
+                        <input
+                          type="date"
+                          value={manualForm.date}
+                          onChange={(e) => setManualForm(f => ({ ...f, date: e.target.value }))}
+                          className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">الوقت</label>
+                        <input
+                          type="time"
+                          value={manualForm.time}
+                          onChange={(e) => setManualForm(f => ({ ...f, time: e.target.value }))}
+                          className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">نوع الحركة</label>
+                      <div className="flex bg-slate-800/50 p-1.5 rounded-2xl border border-slate-700/50">
+                        <button
+                          onClick={() => setManualForm(f => ({ ...f, type: 'CHECK_IN' }))}
+                          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${manualForm.type === 'CHECK_IN' ? 'bg-slate-700 text-green-400 shadow-sm' : 'text-slate-400'}`}
+                        >
+                          تسجيل دخول
+                        </button>
+                        <button
+                          onClick={() => setManualForm(f => ({ ...f, type: 'CHECK_OUT' }))}
+                          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${manualForm.type === 'CHECK_OUT' ? 'bg-slate-700 text-red-400 shadow-sm' : 'text-slate-400'}`}
+                        >
+                          تسجيل خروج
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Reason & File (Shared) */}
+                <div className="space-y-4 pt-2 border-t border-slate-700/50">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">السبب / ملاحظات</label>
+                    <textarea
+                      value={manualForm.note}
+                      onChange={(e) => setManualForm(f => ({ ...f, note: e.target.value }))}
+                      placeholder="اكتب سبب التعديل أو تفاصيل المهمة..."
+                      className="w-full px-4 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-sm focus:ring-2 focus:ring-purple-500 outline-none text-white h-20 resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">مرفقات (اختياري)</label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        onChange={(e) => setManualForm(f => ({ ...f, file: e.target.files ? e.target.files[0] : null }))}
+                        className="hidden"
+                        id="manualFile"
+                      />
+                      <label
+                        htmlFor="manualFile"
+                        className={`flex items-center justify-center gap-2 p-3 border border-dashed rounded-xl cursor-pointer transition-all ${manualForm.file ? 'border-purple-500 bg-purple-500/10 text-purple-400' : 'border-slate-700 hover:border-slate-600 text-slate-400 hover:text-slate-300'}`}
+                      >
+                        {manualForm.file ? (
+                          <>
+                            <Check size={16} />
+                            <span className="text-xs font-bold truncate max-w-[200px]">{manualForm.file.name}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Briefcase size={16} />
+                            <span className="text-xs font-bold">رفع ملف (عذر طبي / خطاب)</span>
+                          </>
+                        )}
+                      </label>
+                    </div>
                   </div>
                 </div>
 
