@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { AttendanceRecord, Device, AttendanceMethod } from '../types';
-import { fetchDeviceEmployees, fetchAttendanceLogsRange, submitManualAttendance, fetchAllEmployees, uploadProof, deleteManualLog } from '../services/api';
+import { fetchDeviceEmployees, fetchAttendanceLogsRange, fetchBridgeLogsRange, fetchLegacyLogsRange, submitManualAttendance, fetchAllEmployees, uploadProof, deleteManualLog } from '../services/api';
 import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus, Printer, Search, Check, Paperclip, Trash2 } from 'lucide-react';
 import { getDeviceConfig } from '../config/shifts';
 
@@ -603,13 +603,33 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     const run = async () => {
       try {
         setRangeLoading(true);
-        setRangeLogs([]); // Clear old data to prevent confusion
+        setRangeLogs([]); // Clear old data
+
         const s = new Date(startDate);
         const e = new Date(endDate);
         e.setHours(23, 59, 59, 999);
-        // Pass filters to API for Server-Side Filtering (Fixes 1000 limit issue)
-        const data = await fetchAttendanceLogsRange(s, e, selectedEmployee, deviceSn);
-        setRangeLogs(data);
+
+        // 1. Fetch from BRIDGE (New Server) - Should be fast
+        const bridgeData = await fetchBridgeLogsRange(s, e, selectedEmployee, deviceSn);
+        setRangeLogs(prev => {
+          const Combined = [...prev, ...bridgeData];
+          // Simple Dedup by ID
+          const unique = new Map();
+          Combined.forEach(item => unique.set(item.id, item));
+          return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        });
+
+        // 2. Fetch from LEGACY (Old Server) - Might be slow
+        // We do this AFTER Bridge is done so user sees something immediately
+        // Note: Promise.all would block. Sequential let's us render first.
+        const legacyData = await fetchLegacyLogsRange(s, e, selectedEmployee, deviceSn);
+        setRangeLogs(prev => {
+          const Combined = [...prev, ...legacyData];
+          const unique = new Map();
+          Combined.forEach(item => unique.set(item.id, item));
+          return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        });
+
       } finally {
         setRangeLoading(false);
       }

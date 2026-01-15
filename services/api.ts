@@ -445,179 +445,158 @@ export const fetchAttendanceLogsRange = async (
   employeeId?: string,
   deviceSn?: string
 ): Promise<AttendanceRecord[]> => {
-  const headers = await getHeaders();
+  // This is the Legacy signature maintained for backward compatibility.
+  // However, Reports.tsx should IDEALLY call the sub-functions progressively.
+  // For now, this still blocks, BUT we export the sub-functions below/above for Reports.tsx to use.
+  // Wait, the exports should be defined separately. I will define them FIRST.
+  // THIS BLOCK REPLACES THE WHOLE FUNCTION body.
 
-  // Format Dates: Use YYYY-MM-DD only for safer filtering (Server adds 00:00:00 / 23:59:59)
+  const [bridge, legacy] = await Promise.all([
+    fetchBridgeLogsRange(startDate, endDate, employeeId, deviceSn),
+    fetchLegacyLogsRange(startDate, endDate, employeeId, deviceSn)
+  ]);
+
+  const all = [...bridge, ...legacy];
+  const unique = new Map();
+  all.forEach(item => unique.set(item.id, item));
+  return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+};
+
+// --- EXPORTED SUB-FUNCTIONS ---
+
+export const fetchBridgeLogsRange = async (startDate: Date, endDate: Date, employeeId?: string, deviceSn?: string) => {
+  // Format Dates
   const fmt = (d: Date) => {
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
   const gte = fmt(startDate);
   const lte = fmt(endDate);
-  const startTimeMs = startDate.getTime(); // For Early Exit Check
+  const startTimeMs = startDate.getTime();
 
-  // --- 1. Fetch from Local Bridge (New Devices) ---
-  // --- 1. Fetch from Local Bridge (New Devices) ---
-  const fetchBridgeLogs = async () => {
-    let allLogs: any[] = [];
-    const pageSize = 5000; // Increased to 5000 (Cover full month in 1 request usually)
+  let allLogs: any[] = [];
+  const pageSize = 5000;
 
-    // Parallel Fetching: Batch of 5 pages
-    const fetchPage = async (page: number) => {
-      let path = `/biometric_api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
-      if (Capacitor.isNativePlatform()) {
-        path = `https://qssun.solar/api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
-      }
-      if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
-      if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
-      try {
-        const response = await fetch(path);
-        if (!response.ok) return [];
-        const raw = await response.json();
-        return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
-      } catch { return []; }
-    };
-
-    let keepGoing = true;
-    for (let batch = 0; batch < 10; batch++) { // Max 10 batches of 5 = 50 pages
-      if (!keepGoing) break;
-      const promises = [];
-      for (let i = 1; i <= 5; i++) promises.push(fetchPage((batch * 5) + i));
-
-      const results = await Promise.all(promises);
-      for (const list of results) {
-        if (list.length === 0) { keepGoing = false; break; }
-        allLogs = [...allLogs, ...list];
-
-        // Early Exit Check (using start date)
-        const lastLog = list[list.length - 1];
-        if (lastLog) {
-          let tStr = String(lastLog.punch_time || lastLog.check_time || lastLog.time || lastLog.timestamp || '');
-          if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
-          const lastDate = new Date(tStr);
-          if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) { keepGoing = false; break; }
-        }
-        if (list.length < pageSize) { keepGoing = false; break; }
-      }
+  const fetchPage = async (page: number) => {
+    let path = `/biometric_api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
+    if (Capacitor.isNativePlatform()) {
+      path = `https://qssun.solar/api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
     }
-    return allLogs;
+    if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+    if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
+    try {
+      const response = await fetch(path);
+      if (!response.ok) return [];
+      const raw = await response.json();
+      return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+    } catch { return []; }
   };
 
-  // --- 2. Fetch from Legacy BioTime (Old Devices) ---
-  // --- 2. Fetch from Legacy BioTime (Old Devices) ---
-  const fetchLegacyLogs = async () => {
-    let allLogs: any[] = [];
-    const pageSize = 200; // Legacy usually limits to 200 default unless configured
+  let keepGoing = true;
+  for (let batch = 0; batch < 10; batch++) {
+    if (!keepGoing) break;
+    const promises = [];
+    for (let i = 1; i <= 5; i++) promises.push(fetchPage((batch * 5) + i)); // 1..5, 6..10
 
-    // Loop up to 50 pages (10,000 records)
-    // Note: BioTime uses ?page=X
-    for (let page = 1; page <= 50; page++) {
-      let path = `/legacy_iclock/api/transactions/?page_size=${pageSize}&ordering=-punch_time&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}`;
+    const results = await Promise.all(promises);
+    for (const list of results) {
+      if (list.length === 0) { keepGoing = false; break; }
+      allLogs = [...allLogs, ...list];
 
-      if (Capacitor.isNativePlatform()) {
-        path = `http://qssun.dyndns.org:8085/iclock/api/transactions/?page_size=${pageSize}&ordering=-punch_time&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}`;
+      const lastLog = list[list.length - 1];
+      if (lastLog) {
+        let tStr = String(lastLog.punch_time || lastLog.check_time || lastLog.time || lastLog.timestamp || '');
+        if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
+        const lastDate = new Date(tStr);
+        if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) { keepGoing = false; break; }
       }
-
-      if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
-      if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
-
-      try {
-        const headers = await getLegacyAuthHeaders();
-        const response = await fetch(path, { method: 'GET', headers });
-
-        if (!response.ok) break;
-        const raw = await response.json();
-        const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
-
-        if (list.length === 0) break;
-
-        allLogs = [...allLogs, ...list];
-
-        // Check pagination metadata if available for early exit
-        if (raw.next === null) break;
-        if (list.length < pageSize && !raw.next) break;
-
-        // Early Exit: If last log is older than startDate, stop fetching
-        const lastLog = list[list.length - 1];
-        if (lastLog) {
-          let tStr = String(lastLog.punch_time || lastLog.check_time || lastLog.time || lastLog.timestamp || '');
-          if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
-          const lastDate = new Date(tStr);
-          if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) {
-            break;
-          }
-        }
-
-      } catch (e) {
-        console.warn("Legacy API Fetch Failed:", e);
-        break;
-      }
-    }
-    return allLogs;
-  };
-
-  // --- 3. Execute Both & Merge ---
-  const [bridgeLogs, legacyLogs] = await Promise.all([fetchBridgeLogs(), fetchLegacyLogs()]);
-
-  // Merge Arrays
-  const combinedRaw = [...bridgeLogs, ...legacyLogs];
-
-  // Transform to internal model
-  const out: AttendanceRecord[] = [];
-  const seenIds = new Set(); // Dedup by ID
-
-  for (const item of combinedRaw) {
-    // Unique Key (ID from DB or generated)
-    const uniqueKey = item.id ? String(item.id) : `log-${item.emp_code}-${item.punch_time}`;
-    if (seenIds.has(uniqueKey)) continue;
-    seenIds.add(uniqueKey);
-
-    // Safe Date Parsing (Handle Standard SQL DateTime 'YYYY-MM-DD HH:MM:SS')
-    let tStr = String(item.punch_time || item.time || item.timestamp);
-    if (tStr.includes(' ') && !tStr.includes('T')) {
-      tStr = tStr.replace(' ', 'T');
-    }
-    const punchTime = new Date(tStr);
-
-    // Basic Filter Check (Just to be safe)
-    if (punchTime >= startDate && punchTime <= endDate) {
-      const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
-
-      out.push({
-        id: uniqueKey,
-        employeeId: item.emp_code || item.user_id || 'UNKNOWN',
-        employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
-        timestamp: punchTime.toISOString(),
-        type: parsePunchState(item.punch_state),
-        method: (item.verify_type_display === 'Manual' || item.terminal_sn === 'MANUAL') ? AttendanceMethod.MANUAL :
-          item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
-            item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
-              AttendanceMethod.FINGERPRINT,
-        status: isLate ? 'LATE' : 'ON_TIME',
-        location: {
-          lat: 0, lng: 0, accuracy: 0,
-          address: item.area_alias || item.terminal_alias || 'Main Branch'
-        },
-        deviceSn: item.terminal_sn || undefined,
-        deviceAlias: item.terminal_alias || item.area_alias || undefined
-      } as AttendanceRecord);
+      if (list.length < pageSize) { keepGoing = false; break; }
     }
   }
 
-
-
-  // --- 4. Fetch Manual Logs (Hybrid Fetch) ---
-  // To keep it simple and robust, we fetch manual logs from the NEW server (assuming it syncs)
-  // or duplicate this logic if needed. For now, assuming Manual Logs are on NEW server.
-  const mlBase = `${API_CONFIG.baseUrl}/manuallogs.php?start_time=${gte}&end_time=${lte}&page_size=2000`; // Assuming new PHP for ml
-  // Or if using Legacy for Manual Logs:
-  // const mlBase = `${LEGACY_API_CONFIG.baseUrl}/manuallogs/?...`; 
-
-  // For safety, we will skip fetching separate manual logs here to avoid breakage until `manuallogs.php` is confirmed created.
-  // Instead, rely on `combinedRaw` which might include manual logs if they are in `attendance_logs` table (often are).
-
-  return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  // Transform
+  return allLogs.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
 };
+
+export const fetchLegacyLogsRange = async (startDate: Date, endDate: Date, employeeId?: string, deviceSn?: string) => {
+  // Format Dates
+  const fmt = (d: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const gte = fmt(startDate);
+  const lte = fmt(endDate);
+  const startTimeMs = startDate.getTime();
+
+  let allLogs: any[] = [];
+  const pageSize = 200;
+
+  for (let page = 1; page <= 50; page++) {
+    let path = `/legacy_iclock/api/transactions/?page_size=${pageSize}&ordering=-punch_time&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}`;
+    if (Capacitor.isNativePlatform()) {
+      path = `http://qssun.dyndns.org:8085/iclock/api/transactions/?page_size=${pageSize}&ordering=-punch_time&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}`;
+    }
+    if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+    if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
+
+    try {
+      const headers = await getLegacyAuthHeaders();
+      const response = await fetch(path, { method: 'GET', headers });
+      if (!response.ok) break;
+      const raw = await response.json();
+      const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+      if (list.length === 0) break;
+      allLogs = [...allLogs, ...list];
+
+      const lastLog = list[list.length - 1];
+      if (lastLog) {
+        let tStr = String(lastLog.punch_time || lastLog.check_time || lastLog.time || lastLog.timestamp || '');
+        if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
+        const lastDate = new Date(tStr);
+        if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) break;
+      }
+
+      if (raw.next === null) break;
+      if (list.length < pageSize && !raw.next) break;
+    } catch (e) { console.warn("Legacy Error", e); break; }
+  }
+
+  return allLogs.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+};
+
+// Helper: Transform Raw Log to AttendanceRecord
+const transformLog = (item: any, startDate: Date, endDate: Date): AttendanceRecord | null => {
+  const uniqueKey = item.id ? String(item.id) : `log-${item.emp_code}-${item.punch_time}`;
+  let tStr = String(item.punch_time || item.time || item.timestamp);
+  if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
+  const punchTime = new Date(tStr);
+
+  if (punchTime < startDate || punchTime > endDate) return null;
+
+  const isLate = checkIsLate(punchTime, item.terminal_sn, item.terminal_alias || item.area_alias);
+
+  return {
+    id: uniqueKey,
+    employeeId: item.emp_code || item.user_id || 'UNKNOWN',
+    employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
+    timestamp: punchTime.toISOString(),
+    type: parsePunchState(item.punch_state),
+    method: (item.verify_type_display === 'Manual' || item.terminal_sn === 'MANUAL') ? AttendanceMethod.MANUAL :
+      (item.verify_type_display === 'Face' || (item.verify_mode && item.verify_mode == 15)) ? AttendanceMethod.FACE :
+        AttendanceMethod.FINGERPRINT, // Simplified fallback
+    status: isLate ? 'LATE' : 'ON_TIME',
+    location: {
+      lat: 0, lng: 0, accuracy: 0,
+      address: item.area_alias || item.terminal_alias || 'Main Branch'
+    },
+    deviceSn: item.terminal_sn || undefined,
+    deviceAlias: item.terminal_alias || item.area_alias || undefined
+  };
+};
+
+
+
+
 
 export const fetchEmployeeLogs = async (employeeId: string, startDate: Date, endDate: Date): Promise<AttendanceRecord[]> => {
   const headers = await getHeaders();
