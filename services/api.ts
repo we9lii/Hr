@@ -471,13 +471,21 @@ export const fetchBridgeLogsRange = async (
   deviceSn?: string,
   onChunk?: (chunk: AttendanceRecord[]) => void
 ) => {
+  const SYSTEM_START_DATE = new Date('2025-12-01T00:00:00');
+
+  // Optimize: Clamp Start Date
+  const effectiveStartDate = startDate < SYSTEM_START_DATE ? SYSTEM_START_DATE : startDate;
+
+  // Optimization: If requested range is entirely before system start, return empty
+  if (endDate < SYSTEM_START_DATE) return [];
+
   const fmt = (d: Date) => {
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
-  const gte = fmt(startDate);
+  const gte = fmt(effectiveStartDate); // Use Clamped Date
   const lte = fmt(endDate);
-  const startTimeMs = startDate.getTime();
+  const startTimeMs = effectiveStartDate.getTime();
 
   let allLogs: any[] = [];
   const pageSize = 1000; // Reduced to 1000 for faster TTFB (First Byte)
@@ -509,7 +517,7 @@ export const fetchBridgeLogsRange = async (
       if (list.length === 0) { keepGoing = false; break; }
 
       // Transform and Stream immediately
-      const chunk = list.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+      const chunk = list.map(item => transformLog(item, effectiveStartDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
       if (chunk.length > 0) {
         allLogs = [...allLogs, ...chunk]; // Keep local copy for final return (legacy)
         if (onChunk) onChunk(chunk); // Stream out
@@ -535,13 +543,21 @@ export const fetchLegacyLogsRange = async (
   deviceSn?: string,
   onChunk?: (chunk: AttendanceRecord[]) => void
 ) => {
+  const SYSTEM_START_DATE = new Date('2025-12-01T00:00:00');
+
+  // Optimize: Clamp Start Date
+  const effectiveStartDate = startDate < SYSTEM_START_DATE ? SYSTEM_START_DATE : startDate;
+
+  // Optimization: If requested range is entirely before system start, return empty
+  if (endDate < SYSTEM_START_DATE) return [];
+
   const fmt = (d: Date) => {
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
-  const gte = fmt(startDate);
+  const gte = fmt(effectiveStartDate); // Use Clamped Date
   const lte = fmt(endDate);
-  const startTimeMs = startDate.getTime();
+  const startTimeMs = effectiveStartDate.getTime();
 
   let allLogs: any[] = [];
   const pageSize = 200;
@@ -562,8 +578,8 @@ export const fetchLegacyLogsRange = async (
       const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
       if (list.length === 0) break;
 
-      // Transform and Stream
-      const chunk = list.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+      // Transform and Stream immediately
+      const chunk = list.map(item => transformLog(item, effectiveStartDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
       if (chunk.length > 0) {
         allLogs = [...allLogs, ...chunk];
         if (onChunk) onChunk(chunk);
