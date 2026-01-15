@@ -458,7 +458,7 @@ export const fetchAttendanceLogsRange = async (
   // --- 1. Fetch from Local Bridge (New Devices) ---
   const fetchBridgeLogs = async () => {
     let allLogs: any[] = [];
-    const pageSize = 500;
+    const pageSize = 2000;
 
     // Loop up to 50 pages (50,000 records safety limit)
     for (let page = 1; page <= 50; page++) {

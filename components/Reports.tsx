@@ -603,6 +603,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     const run = async () => {
       try {
         setRangeLoading(true);
+        setRangeLogs([]); // Clear old data to prevent confusion
         const s = new Date(startDate);
         const e = new Date(endDate);
         e.setHours(23, 59, 59, 999);
