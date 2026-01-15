@@ -13,7 +13,6 @@ import { getStats } from './services/api';
 import { Clock, CheckCircle, XCircle, RefreshCw, Users as UsersIcon, Sparkles, WifiOff, AlertTriangle, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import ModernDashboard from './components/ModernDashboard';
 import DeviceManager from './components/DeviceManager';
-import LiveBiometricLogs from './components/LiveBiometricLogs';
 import Employees from './components/Employees';
 
 const App: React.FC = () => {
@@ -675,7 +674,6 @@ const App: React.FC = () => {
               <DeviceManager onDevicesUpdated={setDevices} />
             )}
 
-            {activeTab === 'biometric' && <LiveBiometricLogs employees={employeesIndex} settings={settings} />}
 
             {activeTab === 'locations' && <LocationManager />}
 
