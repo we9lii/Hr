@@ -447,18 +447,19 @@ export const fetchAttendanceLogsRange = async (
 ): Promise<AttendanceRecord[]> => {
   const headers = await getHeaders();
 
-  // Format Dates for Django Filter (YYYY-MM-DD HH:MM:SS) - ZK friendly
+  // Format Dates: Use YYYY-MM-DD only for safer filtering (Server adds 00:00:00 / 23:59:59)
   const fmt = (d: Date) => {
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
   const gte = fmt(startDate);
   const lte = fmt(endDate);
+  const startTimeMs = startDate.getTime(); // For Early Exit Check
 
   // --- 1. Fetch from Local Bridge (New Devices) ---
   const fetchBridgeLogs = async () => {
     let allLogs: any[] = [];
-    const pageSize = 2000;
+    const pageSize = 1000;
 
     // Loop up to 50 pages (50,000 records safety limit)
     for (let page = 1; page <= 50; page++) {
@@ -481,8 +482,20 @@ export const fetchAttendanceLogsRange = async (
 
         allLogs = [...allLogs, ...list];
 
-        // Optimization: If we got fewer than pageSize, we are done
         if (list.length < pageSize) break;
+
+        // Early Exit: If last log is older than startDate, stop fetching
+        const lastLog = list[list.length - 1];
+        if (lastLog) {
+          let tStr = String(lastLog.punch_time || lastLog.check_time || lastLog.time || lastLog.timestamp || '');
+          if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
+          const lastDate = new Date(tStr);
+          if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) {
+            // Break logic: We reached older logs. 
+            // Note: Only works if sorting is DESC (Newest First) which we set in API params usually
+            break;
+          }
+        }
 
       } catch (e) {
         console.warn("Bridge API Fetch Failed:", e);
@@ -525,6 +538,17 @@ export const fetchAttendanceLogsRange = async (
         // Check pagination metadata if available for early exit
         if (raw.next === null) break;
         if (list.length < pageSize && !raw.next) break;
+
+        // Early Exit: If last log is older than startDate, stop fetching
+        const lastLog = list[list.length - 1];
+        if (lastLog) {
+          let tStr = String(lastLog.punch_time || lastLog.check_time || lastLog.time || lastLog.timestamp || '');
+          if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
+          const lastDate = new Date(tStr);
+          if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) {
+            break;
+          }
+        }
 
       } catch (e) {
         console.warn("Legacy API Fetch Failed:", e);
