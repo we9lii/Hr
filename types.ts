@@ -2,7 +2,8 @@ export enum AttendanceMethod {
   FINGERPRINT = 'بصمة إصبع',
   FACE = 'بصمة وجه',
   GPS = 'تطبيق جوال (GPS)',
-  CARD = 'بطاقة'
+  CARD = 'بطاقة',
+  MANUAL = 'يدوي'
 }
 
 export type UserRole = 'ADMIN' | 'EMPLOYEE';

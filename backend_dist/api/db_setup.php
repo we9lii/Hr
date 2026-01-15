@@ -1,6 +1,12 @@
 <?php
 // db_setup.php - Initialize Tables for Biometric Sync
-include_once '../db_connect.php';
+if (file_exists('db_connect.php')) {
+    include_once 'db_connect.php';
+} elseif (file_exists('../db_connect.php')) {
+    include_once '../db_connect.php';
+} else {
+    die("Error: db_connect.php not found. Please upload this file to the root or api folder.");
+}
 
 $tables = [
     // 1. Device Commands
@@ -40,6 +46,23 @@ $tables = [
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_fp (user_id, finger_id)
+    )",
+
+    // 4. Attendance Logs (Ensure exists)
+    // 4. Attendance Logs (Ensure exists)
+    "CREATE TABLE IF NOT EXISTS attendance_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        device_sn VARCHAR(50) NOT NULL,
+        user_id VARCHAR(50) NOT NULL,
+        check_time DATETIME NOT NULL,
+        status TINYINT DEFAULT 0,
+        verify_mode INT DEFAULT 1,
+        work_code INT DEFAULT 0,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY log_unique (device_sn, user_id, check_time),
+        INDEX (user_id),
+        INDEX (check_time)
     )"
 ];
 
@@ -51,5 +74,21 @@ foreach ($tables as $sql) {
         echo "Error: " . $e->getMessage() . "<br>";
     }
 }
+
+// Add 'notes' column if not exists (for existing tables)
+$alterSql = "ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS notes TEXT";
+try {
+    $pdo->exec($alterSql);
+    echo "Checked/Added 'notes' column to attendance_logs.<br>";
+} catch (Exception $e) {
+    // Fallback for older MySQL
+    try {
+        $pdo->exec("ALTER TABLE attendance_logs ADD COLUMN notes TEXT");
+        echo "Added 'notes' column (Fallback).<br>";
+    } catch (Exception $ex) {
+        // Ignored: Column probably exists
+    }
+}
+
 echo "Database Setup Complete.";
 ?>

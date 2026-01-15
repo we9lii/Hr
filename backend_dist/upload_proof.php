@@ -10,11 +10,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// require_once '../db_connect.php'; // Not needed for file upload
+require_once '../db_connect.php';
 
 // Check if file is present
 if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-    echo json_encode(['status' => 'error', 'message' => 'No file uploaded or upload error: ' . ($_FILES['file']['error'] ?? 'Unknown')]);
+    echo JSON_encode(['status' => 'error', 'message' => 'No file uploaded or upload error']);
     exit;
 }
 
@@ -23,17 +23,14 @@ $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
 
 if (!in_array($ext, $allowed)) {
-    echo json_encode(['status' => 'error', 'message' => 'Invalid file type. Only JPG, PNG, PDF allowed']);
+    echo JSON_encode(['status' => 'error', 'message' => 'Invalid file type. Only JPG, PNG, PDF allowed']);
     exit;
 }
 
-// Create Upload Directory (Official Structure)
-$uploadDir = __DIR__ . '/../attachment/manuallog/';
+// Create Upload Directory
+$uploadDir = '../uploads/proofs/';
 if (!file_exists($uploadDir)) {
-    if (!mkdir($uploadDir, 0777, true)) {
-        echo json_encode(['status' => 'error', 'message' => 'Failed to create upload directory']);
-        exit;
-    }
+    mkdir($uploadDir, 0777, true);
 }
 
 // Generate Unique Name
@@ -41,17 +38,19 @@ $filename = uniqid('proof_', true) . '.' . $ext;
 $targetPath = $uploadDir . $filename;
 
 if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-    // Return the URL relative to root
-    // Assuming backend_dist/api/ is /api/
-    // Path becomes /attachment/manuallog/filename
-    $publicUrl = "/attachment/manuallog/" . $filename;
+    // Return the URL (assuming server root structure, adapt as needed)
+    // If backend_dist is mapped to /api root:
+    // This needs to be accessible via web. 
+    // Usually backend_dist is static served or php served.
+    // We'll return the relative path from the API root.
+    $publicUrl = "/uploads/proofs/" . $filename;
 
-    echo json_encode([
+    echo JSON_encode([
         'status' => 'success',
         'url' => $publicUrl,
         'message' => 'File uploaded successfully'
     ]);
 } else {
-    echo json_encode(['status' => 'error', 'message' => 'Failed to save file']);
+    echo JSON_encode(['status' => 'error', 'message' => 'Failed to save file']);
 }
 ?>

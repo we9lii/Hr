@@ -33,14 +33,23 @@ const resolveAreaName = (lat: number, lng: number): string | null => {
 
 // Parse ZK Punch State
 const parsePunchState = (state: string | number): 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_IN' | 'BREAK_OUT' => {
-  const s = String(state);
-  if (s === '0' || s === 'CHECK_IN') return 'CHECK_IN';
-  if (s === '1' || s === 'CHECK_OUT') return 'CHECK_OUT';
-  if (s === '2') return 'BREAK_OUT';
-  if (s === '3') return 'BREAK_IN';
-  if (s === '4') return 'CHECK_IN';
-  if (s === '5') return 'CHECK_OUT';
-  return 'CHECK_OUT'; // Default fallback matching old logic
+  const s = String(state).trim().toUpperCase(); // Normalize
+
+  if (s === '0' || s === 'CHECK_IN' || s === 'CHECK IN' || s === 'C/IN' || s === 'I') return 'CHECK_IN';
+  if (s === '1' || s === 'CHECK_OUT' || s === 'CHECK OUT' || s === 'C/OUT' || s === 'O') return 'CHECK_OUT';
+
+  if (s === '2' || s === 'BREAK_OUT') return 'BREAK_OUT';
+  if (s === '3' || s === 'BREAK_IN') return 'BREAK_IN';
+
+  // ZKTeco extended states
+  if (s === '4') return 'CHECK_IN'; // Overtime In
+  if (s === '5') return 'CHECK_OUT'; // Overtime Out
+
+  // If undefined or unknown number, try to guess or default to Check Out?
+  // Actually if we default to CheckOut, we miss Lateness.
+  // Better to default to CHECK_IN if it looks like unknown? No.
+  // Let's Log warning if needed, but for safe fallback:
+  return 'CHECK_OUT';
 };
 
 const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): boolean => {
@@ -54,10 +63,22 @@ const checkIsLate = (punchTime: Date, deviceSn?: string, deviceAlias?: string): 
   const punchHour = punchTime.getHours();
   const punchMin = punchTime.getMinutes();
 
-  // Find relevant shift (Morning vs Evening split at 13:00)
+  // Find Closest Shift Start (Robust Logic)
   let shift = shifts[0];
-  if (shifts.length > 1 && punchHour >= 13) {
-    shift = shifts[1];
+  let minDiff = Infinity;
+
+  const punchMs = punchTime.getTime();
+
+  for (const s of shifts) {
+    const [h, m] = s.start.split(':').map(Number);
+    const sStart = new Date(punchTime); // clone match day
+    sStart.setHours(h, m, 0, 0);
+
+    const diff = Math.abs(punchMs - sStart.getTime());
+    if (diff < minDiff) {
+      minDiff = diff;
+      shift = s;
+    }
   }
 
   const [startHour, startMin] = shift.start.split(':').map(Number);
@@ -436,53 +457,81 @@ export const fetchAttendanceLogsRange = async (
 
   // --- 1. Fetch from Local Bridge (New Devices) ---
   const fetchBridgeLogs = async () => {
-    // Moved to iclock folder for consistency
-    // Note: The file is now at iclock/transactions.php
-    let path = `/biometric_api/iclock/transactions.php?punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    let allLogs: any[] = [];
+    const pageSize = 500;
 
-    if (Capacitor.isNativePlatform()) {
-      path = `https://qssun.solar/api/iclock/transactions.php?punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    // Loop up to 50 pages (50,000 records safety limit)
+    for (let page = 1; page <= 50; page++) {
+      let path = `/biometric_api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
+
+      if (Capacitor.isNativePlatform()) {
+        path = `https://qssun.solar/api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
+      }
+
+      if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+      if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
+
+      try {
+        const response = await fetch(path);
+        if (!response.ok) break;
+        const raw = await response.json();
+        const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+
+        if (list.length === 0) break;
+
+        allLogs = [...allLogs, ...list];
+
+        // Optimization: If we got fewer than pageSize, we are done
+        if (list.length < pageSize) break;
+
+      } catch (e) {
+        console.warn("Bridge API Fetch Failed:", e);
+        break;
+      }
     }
-
-    if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
-    if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
-
-    try {
-      const response = await fetch(path);
-      if (!response.ok) return [];
-      const raw = await response.json();
-      return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
-    } catch (e) {
-      console.warn("Bridge API Fetch Failed:", e);
-      return [];
-    }
+    return allLogs;
   };
 
   // --- 2. Fetch from Legacy BioTime (Old Devices) ---
+  // --- 2. Fetch from Legacy BioTime (Old Devices) ---
   const fetchLegacyLogs = async () => {
-    // Use the Legacy Proxy mapped in server.js
-    let path = `/legacy_iclock/api/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    let allLogs: any[] = [];
+    const pageSize = 200; // Legacy usually limits to 200 default unless configured
 
-    if (Capacitor.isNativePlatform()) {
-      // Native: Direct to Legacy Server
-      path = `http://qssun.dyndns.org:8085/iclock/api/transactions/?page_size=200&ordering=-punch_time&punch_time__gte=${gte}&punch_time__lte=${lte}`;
+    // Loop up to 50 pages (10,000 records)
+    // Note: BioTime uses ?page=X
+    for (let page = 1; page <= 50; page++) {
+      let path = `/legacy_iclock/api/transactions/?page_size=${pageSize}&ordering=-punch_time&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}`;
+
+      if (Capacitor.isNativePlatform()) {
+        path = `http://qssun.dyndns.org:8085/iclock/api/transactions/?page_size=${pageSize}&ordering=-punch_time&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}`;
+      }
+
+      if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+      if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
+
+      try {
+        const headers = await getLegacyAuthHeaders();
+        const response = await fetch(path, { method: 'GET', headers });
+
+        if (!response.ok) break;
+        const raw = await response.json();
+        const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+
+        if (list.length === 0) break;
+
+        allLogs = [...allLogs, ...list];
+
+        // Check pagination metadata if available for early exit
+        if (raw.next === null) break;
+        if (list.length < pageSize && !raw.next) break;
+
+      } catch (e) {
+        console.warn("Legacy API Fetch Failed:", e);
+        break;
+      }
     }
-
-    if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
-    if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
-
-    try {
-      const headers = await getLegacyAuthHeaders();
-      // Use fetch directly for path (web) or url (native)
-      const response = await fetch(path, { method: 'GET', headers });
-
-      if (!response.ok) return [];
-      const raw = await response.json();
-      return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
-    } catch (e) {
-      console.warn("Legacy API Fetch Failed:", e);
-      return [];
-    }
+    return allLogs;
   };
 
   // --- 3. Execute Both & Merge ---
@@ -501,7 +550,12 @@ export const fetchAttendanceLogsRange = async (
     if (seenIds.has(uniqueKey)) continue;
     seenIds.add(uniqueKey);
 
-    const punchTime = new Date(item.punch_time || item.time || item.timestamp);
+    // Safe Date Parsing (Handle Standard SQL DateTime 'YYYY-MM-DD HH:MM:SS')
+    let tStr = String(item.punch_time || item.time || item.timestamp);
+    if (tStr.includes(' ') && !tStr.includes('T')) {
+      tStr = tStr.replace(' ', 'T');
+    }
+    const punchTime = new Date(tStr);
 
     // Basic Filter Check (Just to be safe)
     if (punchTime >= startDate && punchTime <= endDate) {
@@ -513,11 +567,15 @@ export const fetchAttendanceLogsRange = async (
         employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
         timestamp: punchTime.toISOString(),
         type: parsePunchState(item.punch_state),
-        method: item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
-          item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
-            AttendanceMethod.FINGERPRINT,
+        method: (item.verify_type_display === 'Manual' || item.terminal_sn === 'MANUAL') ? AttendanceMethod.MANUAL :
+          item.verify_type_display === 'Face' ? AttendanceMethod.FACE :
+            item.verify_type_display === 'GPS' ? AttendanceMethod.GPS :
+              AttendanceMethod.FINGERPRINT,
         status: isLate ? 'LATE' : 'ON_TIME',
-        location: undefined,
+        location: {
+          lat: 0, lng: 0, accuracy: 0,
+          address: item.area_alias || item.terminal_alias || 'Main Branch'
+        },
         deviceSn: item.terminal_sn || undefined,
         deviceAlias: item.terminal_alias || item.area_alias || undefined
       } as AttendanceRecord);
@@ -932,9 +990,9 @@ export const uploadProof = async (file: File): Promise<string> => {
   const formData = new FormData();
   formData.append('file', file);
 
-  let url = `/biometric_api/api/upload_proof.php`;
+  let url = `/biometric_api/upload_proof.php`;
   if (Capacitor.isNativePlatform()) {
-    url = `https://qssun.solar/api/api/upload_proof.php`;
+    url = `https://qssun.solar/api/upload_proof.php`;
   }
 
   const response = await fetch(url, {
@@ -960,9 +1018,18 @@ export const submitManualAttendance = async (
   note?: string
 ): Promise<boolean> => {
   try {
+    // Format Date to MySQL DateTime (YYYY-MM-DD HH:MM:SS) - Local Time
+    const y = timestamp.getFullYear();
+    const m = String(timestamp.getMonth() + 1).padStart(2, '0');
+    const d = String(timestamp.getDate()).padStart(2, '0');
+    const H = String(timestamp.getHours()).padStart(2, '0');
+    const M = String(timestamp.getMinutes()).padStart(2, '0');
+    const S = String(timestamp.getSeconds()).padStart(2, '0');
+    const mysqlTime = `${y}-${m}-${d} ${H}:${M}:${S}`;
+
     const payload = {
       emp_code: employeeId,
-      punch_time: timestamp.toISOString(),
+      punch_time: mysqlTime,
       punch_state: type === 'CHECK_IN' ? '0' : '1',
       verify_mode: '15', // 15 = Manual
       area_alias: note || 'Manual Adjustment',
@@ -970,21 +1037,51 @@ export const submitManualAttendance = async (
     };
 
     const headers = await getHeaders();
-    const response = await fetch(`/personnel/api/transactions/`, {
+
+    // Switch to Bridge API for Reliability
+    let url = `/biometric_api/iclock/transactions.php`;
+    if (Capacitor.isNativePlatform()) {
+      url = `https://qssun.solar/api/iclock/transactions.php`;
+    }
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers,
+      // Removing headers authentication for Bridge if not implemented, or keeping Content-Type
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
       const t = await response.text();
-      throw new Error(`Failed to submit manual attendance: ${t}`);
+      throw new Error(`Failed to submit: ${t}`);
     }
 
     return true;
   } catch (error) {
     console.error("Manual Submit Error:", error);
     throw error;
+  }
+};
+
+export const deleteManualLog = async (logId: string): Promise<boolean> => {
+  try {
+    let url = `/biometric_api/iclock/transactions.php`;
+    if (Capacitor.isNativePlatform()) {
+      url = `https://qssun.solar/api/iclock/transactions.php`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', id: logId })
+    });
+
+    const result = await response.json();
+    if (result.status === 'success') return true;
+    throw new Error(result.message || 'Failed to delete');
+  } catch (error) {
+    console.error("Delete Log Error:", error);
+    return false;
   }
 };
 

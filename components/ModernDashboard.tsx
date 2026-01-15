@@ -236,7 +236,7 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                             <td className="p-2 md:p-3 font-bold text-white text-[10px] md:text-sm">{log.employeeName}</td>
                                             <td className="p-2 md:p-5">
                                                 <span className="text-[10px] md:text-xs text-slate-400 truncate max-w-[100px] md:max-w-[200px] block" title={log.location?.address}>
-                                                    {log.location?.address || getDeviceConfig({ sn: log.deviceSn || '', alias: log.deviceAlias }).alias}
+                                                    {getDeviceConfig({ sn: log.deviceSn || '', alias: log.deviceAlias }).alias || log.location?.address || '-'}
                                                 </span>
                                                 {/* Accuracy Indicator */}
                                                 {log.accuracy !== undefined && (

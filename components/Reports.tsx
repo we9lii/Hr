@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { AttendanceRecord, Device } from '../types';
-import { fetchDeviceEmployees, fetchAttendanceLogsRange, submitManualAttendance, fetchAllEmployees, uploadProof } from '../services/api';
-import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus, Printer, Search, Check } from 'lucide-react';
+import { AttendanceRecord, Device, AttendanceMethod } from '../types';
+import { fetchDeviceEmployees, fetchAttendanceLogsRange, submitManualAttendance, fetchAllEmployees, uploadProof, deleteManualLog } from '../services/api';
+import { Download, AlertTriangle, Clock, MapPin, Filter, Briefcase, FileBarChart, Calendar, TrendingUp, X, UserPlus, Printer, Search, Check, Paperclip, Trash2 } from 'lucide-react';
 import { getDeviceConfig } from '../config/shifts';
 
 interface ReportsProps {
@@ -9,7 +9,7 @@ interface ReportsProps {
   devices?: Device[];
 }
 
-type ReportType = 'ALL' | 'LATE' | 'METHODS' | 'DAILY';
+type ReportType = 'ALL' | 'LATE' | 'METHODS' | 'DAILY' | 'MANUAL';
 
 // StatCard Component
 const StatCard = ({ title, value, color, icon, bg, border }: any) => (
@@ -167,6 +167,24 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       alert("فشل في تسجيل الحركة: " + error);
     } finally {
       setManualSubmitting(false);
+    }
+  };
+
+  const handleDeleteLog = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا السجل؟')) return;
+    const success = await deleteManualLog(id);
+    if (success) {
+      alert('تم الحذف بنجاح');
+      // Refresh Data
+      setRangeLoading(true);
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      e.setHours(23, 59, 59, 999);
+      const data = await fetchAttendanceLogsRange(s, e);
+      setRangeLogs(data);
+      setRangeLoading(false);
+    } else {
+      alert('فشل الحذف. تأكد أن السجل يدوي.');
     }
   };
 
@@ -513,14 +531,19 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
     const checkInHour = checkInTime.getHours();
 
-    // Determine applicable shift based on time of day (AM/PM split)
+    // Find Closest Shift Start (Robust for any schedule)
     let targetShift = shifts[0];
+    let minDiff = Infinity;
 
-    if (shifts.length > 1) {
-      if (checkInHour >= 13) {
-        targetShift = shifts[1];
-      } else {
-        targetShift = shifts[0];
+    for (const shift of shifts) {
+      const [h, m] = shift.start.split(':').map(Number);
+      const sStart = new Date(log.timestamp);
+      sStart.setHours(h, m, 0, 0);
+
+      const diff = Math.abs(checkInTime.getTime() - sStart.getTime());
+      if (diff < minDiff) {
+        minDiff = diff;
+        targetShift = shift;
       }
     }
 
@@ -583,14 +606,15 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         const s = new Date(startDate);
         const e = new Date(endDate);
         e.setHours(23, 59, 59, 999);
-        const data = await fetchAttendanceLogsRange(s, e);
+        // Pass filters to API for Server-Side Filtering (Fixes 1000 limit issue)
+        const data = await fetchAttendanceLogsRange(s, e, selectedEmployee, deviceSn);
         setRangeLogs(data);
       } finally {
         setRangeLoading(false);
       }
     };
     run();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, selectedEmployee, deviceSn]);
 
   useEffect(() => {
     setReportPage(1);
@@ -896,7 +920,10 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
 
   // Sorting for non-daily is already handled by filteredData + reportSorted logic?
   // Let's unify pagination
-  const activeList = reportType === 'DAILY' ? dailySummaryData : (reportType === 'LATE' ? lateSummary : reportSorted);
+  const activeList = reportType === 'DAILY' ? dailySummaryData
+    : (reportType === 'LATE' ? lateSummary
+      : (reportType === 'MANUAL' ? reportSorted.filter(l => l.method === AttendanceMethod.MANUAL)
+        : reportSorted));
   const totalPages = Math.max(1, Math.ceil(activeList.length / 10));
   const pageItems = activeList.slice((reportPage - 1) * 10, (reportPage - 1) * 10 + 10);
 
@@ -1527,10 +1554,11 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         {/* Filters Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 items-end bg-slate-800/50 p-4 md:p-6 rounded-2xl border border-slate-700/50">
 
+
           {/* Report Type */}
           <div className="xl:col-span-4">
             <label className="block text-[10px] md:text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">نوع التقرير</label>
-            <div className="grid grid-cols-4 md:grid-cols-3 xl:grid-cols-4 gap-1.5 md:gap-2 p-1 bg-slate-900/50 rounded-xl border border-slate-700/50">
+            <div className="grid grid-cols-4 md:grid-cols-3 xl:grid-cols-5 gap-1.5 md:gap-2 p-1 bg-slate-900/50 rounded-xl border border-slate-700/50">
               <button
                 onClick={() => setReportType('ALL')}
                 className={`py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${reportType === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-300'}`}
@@ -1556,6 +1584,13 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
               >
                 <Calendar size={12} className="hidden sm:block" />
                 يومي
+              </button>
+              <button
+                onClick={() => setReportType('MANUAL')}
+                className={`py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 md:gap-2 ${reportType === 'MANUAL' ? 'bg-emerald-900/20 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-300'}`}
+              >
+                <Check size={12} className="hidden sm:block" />
+                يدوي
               </button>
             </div>
           </div>
@@ -1626,10 +1661,10 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
             </div>
           </div>
         </div>
-      </div>
+      </div >
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      < div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6" >
         {reportType === 'LATE' && (
           <>
             <StatCard
@@ -1658,87 +1693,93 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
             />
           </>
         )}
-        {reportType === 'METHODS' && (
-          <>
-            <StatCard
-              title="عن طريق GPS"
-              value={stats.methodCounts.GPS}
-              icon={<MapPin />}
-              color="text-purple-500"
-              bg="bg-purple-900/10"
-              border="border-purple-500/10"
-            />
-            <StatCard
-              title="بصمة الوجه/الإصبع"
-              value={stats.methodCounts.FACE + stats.methodCounts.FINGERPRINT}
-              icon={<Filter />}
-              color="text-blue-500"
-              bg="bg-blue-900/10"
-              border="border-blue-500/10"
-            />
-            <StatCard
-              title="إجمالي الحركات"
-              value={stats.count}
-              icon={<TrendingUp />}
-              color="text-emerald-500"
-              bg="bg-emerald-900/10"
-              border="border-emerald-500/10"
-            />
-          </>
-        )}
-        {reportType === 'ALL' && (
-          <>
-            <StatCard
-              title="إجمالي السجلات"
-              value={stats.count}
-              icon={<FileBarChart />}
-              color="text-blue-600"
-              bg="bg-blue-900/10"
-              border="border-blue-500/10"
-            />
-            <StatCard
-              title="الحضور (GPS)"
-              value={stats.methodCounts.GPS}
-              icon={<MapPin />}
-              color="text-slate-300"
-              bg="bg-slate-800/60"
-              border="border-white/5"
-            />
-            <StatCard
-              title="الحضور (أجهزة)"
-              value={stats.methodCounts.FACE + stats.methodCounts.FINGERPRINT}
-              icon={<Briefcase />}
-              color="text-slate-300"
-              bg="bg-slate-800/60"
-              border="border-white/5"
-            />
-          </>
-        )}
+        {
+          reportType === 'METHODS' && (
+            <>
+              <StatCard
+                title="عن طريق GPS"
+                value={stats.methodCounts.GPS}
+                icon={<MapPin />}
+                color="text-purple-500"
+                bg="bg-purple-900/10"
+                border="border-purple-500/10"
+              />
+              <StatCard
+                title="بصمة الوجه/الإصبع"
+                value={stats.methodCounts.FACE + stats.methodCounts.FINGERPRINT}
+                icon={<Filter />}
+                color="text-blue-500"
+                bg="bg-blue-900/10"
+                border="border-blue-500/10"
+              />
+              <StatCard
+                title="إجمالي الحركات"
+                value={stats.count}
+                icon={<TrendingUp />}
+                color="text-emerald-500"
+                bg="bg-emerald-900/10"
+                border="border-emerald-500/10"
+              />
+            </>
+          )
+        }
+        {
+          reportType === 'ALL' && (
+            <>
+              <StatCard
+                title="إجمالي السجلات"
+                value={stats.count}
+                icon={<FileBarChart />}
+                color="text-blue-600"
+                bg="bg-blue-900/10"
+                border="border-blue-500/10"
+              />
+              <StatCard
+                title="الحضور (GPS)"
+                value={stats.methodCounts.GPS}
+                icon={<MapPin />}
+                color="text-slate-300"
+                bg="bg-slate-800/60"
+                border="border-white/5"
+              />
+              <StatCard
+                title="الحضور (أجهزة)"
+                value={stats.methodCounts.FACE + stats.methodCounts.FINGERPRINT}
+                icon={<Briefcase />}
+                color="text-slate-300"
+                bg="bg-slate-800/60"
+                border="border-white/5"
+              />
+            </>
+          )
+        }
 
-        {reportType === 'DAILY' && (
-          <>
-            <StatCard
-              title="إجمالي ساعات التأخير"
-              value={formatDuration(dailySummaryData.reduce((acc, curr) => acc + curr.lateMinutes, 0))}
-              icon={<Clock />}
-              color="text-red-500"
-              bg="bg-red-900/10"
-              border="border-red-500/10"
-            />
-            <StatCard
-              title="أيام العمل"
-              value={dailySummaryData.length}
-              icon={<FileBarChart />}
-              color="text-emerald-500"
-              bg="bg-emerald-900/10"
-              border="border-emerald-500/10"
-            />
-          </>
-        )}
-      </div>
+        {
+          reportType === 'DAILY' && (
+            <>
+              <StatCard
+                title="إجمالي ساعات التأخير"
+                value={formatDuration(dailySummaryData.reduce((acc, curr) => acc + curr.lateMinutes, 0))}
+                icon={<Clock />}
+                color="text-red-500"
+                bg="bg-red-900/10"
+                border="border-red-500/10"
+              />
+              <StatCard
+                title="أيام العمل"
+                value={dailySummaryData.length}
+                icon={<FileBarChart />}
+                color="text-emerald-500"
+                bg="bg-emerald-900/10"
+                border="border-emerald-500/10"
+              />
+            </>
+          )
+        }
+      </div >
 
       {/* Data Table */}
-      <div className="bg-slate-900/70 backdrop-blur-3xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
+      < div className="bg-slate-900/70 backdrop-blur-3xl rounded-3xl border border-slate-800 shadow-xl overflow-hidden" >
         {deviceSn && (
           <div className="p-5 border-b border-slate-800/50 bg-slate-800/30">
             <div className="text-sm font-bold mb-3 text-slate-200">الموظفون المسجلون على الجهاز المختار</div>
@@ -1764,6 +1805,15 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                     <th className="p-2 md:p-6 font-bold">الموظف</th>
                     <th className="p-2 md:p-6 font-bold">إجمالي التأخير</th>
                     <th className="p-2 md:p-6 font-bold">أيام التأخير</th>
+                  </>
+                ) : reportType === 'MANUAL' ? (
+                  <>
+                    <th className="p-2 md:p-6 font-bold">الموظف</th>
+                    <th className="p-2 md:p-6 font-bold">الوقت</th>
+                    <th className="p-2 md:p-6 font-bold">الحالة</th>
+                    <th className="p-2 md:p-6 font-bold">السبب / المرفق</th>
+                    <th className="p-2 md:p-6 font-bold">حالة الاعتماد</th>
+                    <th className="p-2 md:p-6 font-bold">إجراءات</th>
                   </>
                 ) : (
                   <>
@@ -1816,6 +1866,71 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                             </span>
                           </td>
                           <td className="p-2 md:p-5 text-slate-400 font-medium text-[10px] md:text-base">{log.daysLate} يوم</td>
+                        </tr>
+                      );
+                    }
+
+                    // MANUAL Log View
+                    if (reportType === 'MANUAL') {
+                      return (
+                        <tr key={log.id || idx} className="group hover:bg-emerald-900/10 transition-colors duration-200">
+                          <td className="p-5">
+                            <div className="font-bold text-white">{log.employeeName}</div>
+                            <div className="text-xs text-slate-500">{log.employeeId}</div>
+                          </td>
+                          <td className="p-5 text-slate-300 text-sm" dir="ltr">
+                            {new Date(log.timestamp).toLocaleString('ar-SA')}
+                          </td>
+                          <td className="p-5">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${log.type === 'CHECK_IN' ? 'text-emerald-400 bg-emerald-900/20' : 'text-amber-400 bg-amber-900/20'}`}>
+                              {log.type === 'CHECK_IN' ? 'دخول' : 'خروج'}
+                            </span>
+                          </td>
+                          <td className="p-5">
+                            {/* Note & Attachment */}
+                            {(() => {
+                              const addr = log.location?.address || log.deviceAlias || '';
+                              const attachMatch = addr.match(/(.*)\[مرفق:\s*([^\]]+)\](.*)/);
+                              if (attachMatch) {
+                                // Fix URL: If relative path, prepend qssun.solar/api or qssun.solar based on standard
+                                // The User uploads to /attachment/manuallog/... relative to upload_proof.php
+                                // And upload_proof.php returns "../attachment/manuallog/..."
+                                // But wait, in Step 1924 I saw it returned "publicUrl".
+                                // Step 1977 viewed file showed it returns "../attachment/..."?
+                                // Let's assume the string in DB is relative "../attachment..." or "attachment/..."
+                                let fileUrl = attachMatch[2].trim();
+                                if (!fileUrl.startsWith('http')) {
+                                  // Remove leading dots or slashes
+                                  fileUrl = fileUrl.replace(/^(\.\.\/|\/)+/, '');
+                                  fileUrl = "https://qssun.solar/" + fileUrl;
+                                }
+
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-sm text-slate-300">{attachMatch[1]}</span>
+                                    <a href={fileUrl} target="_blank" rel="noopener noreferrer"
+                                      className="flex items-center gap-2 w-fit bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-blue-400 hover:text-blue-300 transition-colors">
+                                      <Paperclip size={14} />
+                                      <span className="text-xs font-bold">عرض المرفق</span>
+                                    </a>
+                                    {attachMatch[3] && <span className="text-sm text-slate-300">{attachMatch[3]}</span>}
+                                  </div>
+                                );
+                              }
+                              return <span className="text-slate-400 text-sm">{addr || '-'}</span>;
+                            })()}
+                          </td>
+                          <td className="p-5">
+                            <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-900/20 px-3 py-1 rounded-full w-fit border border-emerald-500/20">
+                              <Check size={14} />
+                              <span className="text-xs font-bold">معتمد تلقائياً</span>
+                            </div>
+                          </td>
+                          <td className="p-5">
+                            <button onClick={() => handleDeleteLog(log.id)} className="text-red-400 hover:text-red-300 transition-colors bg-red-900/10 hover:bg-red-900/20 p-2 rounded-lg" title="حذف السجل">
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
                         </tr>
                       );
                     }
@@ -1898,9 +2013,44 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                               )}
                             </div>
                           ) : (
-                            <span className="text-[10px] md:text-xs text-slate-400 font-mono truncate max-w-[80px] md:max-w-[200px] block" title={log.location?.address}>
-                              {log.location?.address ? log.location.address : log.location ? `${log.location.lat.toFixed(4)}` : '-'}
-                            </span>
+                            <div className="text-[10px] md:text-xs text-slate-400 font-mono truncate max-w-[150px] md:max-w-none block" title={log.location?.address}>
+                              {(() => {
+                                // 1. Use getDeviceConfig to resolve Alias (Handles overrides, partial matches, etc)
+                                const config = getDeviceConfig({
+                                  sn: log.deviceSn,
+                                  alias: log.deviceAlias
+                                }, log.timestamp);
+
+                                let displayAddr = config.alias;
+
+                                // 2. Fallback to API alias if config returned generic default (and API had something better? unlikely)
+                                // Actually getDeviceConfig returns `device.alias` fallback, so this is fine.
+
+                                // Attachment Link Logic (Manual - usually has 'Manual' alias or custom note)
+                                const attachMatch = displayAddr?.match(/(.*)\[مرفق:\s*([^\]]+)\](.*)/);
+                                if (attachMatch) {
+                                  let fileUrl = attachMatch[2].trim();
+                                  if (!fileUrl.startsWith('http')) {
+                                    fileUrl = fileUrl.replace(/^(\.\.\/|\/)+/, '');
+                                    fileUrl = "https://qssun.solar/" + fileUrl;
+                                  }
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <span>{attachMatch[1]}</span>
+                                      <a href={fileUrl} target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center gap-1 bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30 hover:bg-blue-500/20 transition-colors">
+                                        <Paperclip size={12} />
+                                        <span className="font-bold">عرض المرفق</span>
+                                      </a>
+                                      {attachMatch[3] && <span>{attachMatch[3]}</span>}
+                                    </div>
+                                  );
+                                }
+
+                                // Default Display
+                                return displayAddr || '-';
+                              })()}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -1929,7 +2079,7 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
             </tbody>
           </table>
         </div>
-      </div>
+      </div >
 
 
 
@@ -2044,161 +2194,163 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       }
 
       {/* Print Modal */}
-      {printModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-scale-in">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900">
-              <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                <Printer className="text-blue-500" />
-                طباعة تقرير التأخير
-              </h3>
-              <button onClick={() => setPrintModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-600 dark:text-slate-400">من تاريخ</label>
-                  <input
-                    type="date"
-                    value={printConfig.start}
-                    onChange={e => setPrintConfig({ ...printConfig, start: e.target.value })}
-                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-600 dark:text-slate-400">إلى تاريخ</label>
-                  <input
-                    type="date"
-                    value={printConfig.end}
-                    onChange={e => setPrintConfig({ ...printConfig, end: e.target.value })}
-                    className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+      {
+        printModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-scale-in">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900">
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <Printer className="text-blue-500" />
+                  طباعة تقرير التأخير
+                </h3>
+                <button onClick={() => setPrintModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                  <X size={20} />
+                </button>
               </div>
 
-              {/* Employee Multi-Select & Search */}
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-600 dark:text-slate-400">الموظفين</label>
-                <div className="border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 overflow-hidden">
-                  {/* Search Header */}
-                  <div className="p-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 bg-white dark:bg-slate-900">
-                    <Search size={16} className="text-slate-400" />
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-600 dark:text-slate-400">من تاريخ</label>
                     <input
-                      type="text"
-                      placeholder="بحث عن موظف..."
-                      value={printEmpSearch}
-                      onChange={e => setPrintEmpSearch(e.target.value)}
-                      className="w-full bg-transparent text-sm outline-none text-slate-700 dark:text-white placeholder:text-slate-400"
+                      type="date"
+                      value={printConfig.start}
+                      onChange={e => setPrintConfig({ ...printConfig, start: e.target.value })}
+                      className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-
-                  {/* Options List */}
-                  <div className="max-h-48 overflow-y-auto p-1 custom-scrollbar">
-                    {/* Select All Option */}
-                    <label className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer transition-colors border-b border-transparent hover:border-slate-200 dark:hover:border-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={printConfig.employeeIds.length === 0}
-                        onChange={() => setPrintConfig(c => ({ ...c, employeeIds: [] }))}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                      />
-                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">جميع الموظفين ({printAvailableEmployees.length})</span>
-                    </label>
-
-                    {/* Filtered List */}
-                    <div className="space-y-0.5 mt-1">
-                      {printAvailableEmployees
-                        .filter(e => e.name.toLowerCase().includes(printEmpSearch.toLowerCase()) || e.code.includes(printEmpSearch))
-                        .map(emp => {
-                          const isSelected = printConfig.employeeIds.includes(emp.code);
-                          return (
-                            <label key={emp.code} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  setPrintConfig(prev => {
-                                    const current = prev.employeeIds;
-                                    if (e.target.checked) {
-                                      // Add logic: If we are adding, we are no longer in "ALL" mode, so just push.
-                                      // If current was empty (ALL), and we click one, implies we want ONLY that one?
-                                      // NO. Standard UX: If "All" is selected (empty logic), and I select "Ahmed", usually it means "Only Ahmed".
-                                      // So logic:
-                                      // If current.length === 0 (ALL mode) -> new set is [id].
-                                      // Else -> [...current, id].
-                                      return { ...prev, employeeIds: [...current, emp.code] };
-                                    } else {
-                                      // Remove
-                                      const newVal = current.filter(id => id !== emp.code);
-                                      // If newVal becomes empty, does it mean ALL?
-                                      // If I deselect the last person, do I want NO ONE or EVERYONE?
-                                      // Usually NONE. But my logic says Empty=ALL.
-                                      // This is a UX conflict.
-                                      // Let's keep strict: Empty = ALL.
-                                      // If user deselects last one -> Goes back to ALL.
-                                      return { ...prev, employeeIds: newVal };
-                                    }
-                                  });
-                                }}
-                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                              />
-                              <div className="flex flex-col">
-                                <span className="text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200">{emp.name}</span>
-                                <span className="text-[10px] text-slate-400 font-mono">{emp.code}</span>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      {printAvailableEmployees.length === 0 && (
-                        <p className="text-center text-xs text-slate-400 py-4">لا يوجد موظفين لهذا الجهاز</p>
-                      )}
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-600 dark:text-slate-400">إلى تاريخ</label>
+                    <input
+                      type="date"
+                      value={printConfig.end}
+                      onChange={e => setPrintConfig({ ...printConfig, end: e.target.value })}
+                      className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
-                <div className="flex justify-between items-center px-1">
-                  <span className="text-[10px] text-slate-400">
-                    {printConfig.employeeIds.length === 0 ? 'يتم عرض تقرير لجميع الموظفين' : `تم تحديد ${printConfig.employeeIds.length} موظف`}
-                  </span>
-                  {printConfig.employeeIds.length > 0 && (
-                    <button
-                      onClick={() => setPrintConfig(c => ({ ...c, employeeIds: [] }))}
-                      className="text-[10px] text-blue-500 hover:text-blue-400 font-bold"
-                    >
-                      إلغاء التحديد
-                    </button>
-                  )}
+
+                {/* Employee Multi-Select & Search */}
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-600 dark:text-slate-400">الموظفين</label>
+                  <div className="border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 overflow-hidden">
+                    {/* Search Header */}
+                    <div className="p-2 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 bg-white dark:bg-slate-900">
+                      <Search size={16} className="text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="بحث عن موظف..."
+                        value={printEmpSearch}
+                        onChange={e => setPrintEmpSearch(e.target.value)}
+                        className="w-full bg-transparent text-sm outline-none text-slate-700 dark:text-white placeholder:text-slate-400"
+                      />
+                    </div>
+
+                    {/* Options List */}
+                    <div className="max-h-48 overflow-y-auto p-1 custom-scrollbar">
+                      {/* Select All Option */}
+                      <label className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg cursor-pointer transition-colors border-b border-transparent hover:border-slate-200 dark:hover:border-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={printConfig.employeeIds.length === 0}
+                          onChange={() => setPrintConfig(c => ({ ...c, employeeIds: [] }))}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                        />
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">جميع الموظفين ({printAvailableEmployees.length})</span>
+                      </label>
+
+                      {/* Filtered List */}
+                      <div className="space-y-0.5 mt-1">
+                        {printAvailableEmployees
+                          .filter(e => e.name.toLowerCase().includes(printEmpSearch.toLowerCase()) || e.code.includes(printEmpSearch))
+                          .map(emp => {
+                            const isSelected = printConfig.employeeIds.includes(emp.code);
+                            return (
+                              <label key={emp.code} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    setPrintConfig(prev => {
+                                      const current = prev.employeeIds;
+                                      if (e.target.checked) {
+                                        // Add logic: If we are adding, we are no longer in "ALL" mode, so just push.
+                                        // If current was empty (ALL), and we click one, implies we want ONLY that one?
+                                        // NO. Standard UX: If "All" is selected (empty logic), and I select "Ahmed", usually it means "Only Ahmed".
+                                        // So logic:
+                                        // If current.length === 0 (ALL mode) -> new set is [id].
+                                        // Else -> [...current, id].
+                                        return { ...prev, employeeIds: [...current, emp.code] };
+                                      } else {
+                                        // Remove
+                                        const newVal = current.filter(id => id !== emp.code);
+                                        // If newVal becomes empty, does it mean ALL?
+                                        // If I deselect the last person, do I want NO ONE or EVERYONE?
+                                        // Usually NONE. But my logic says Empty=ALL.
+                                        // This is a UX conflict.
+                                        // Let's keep strict: Empty = ALL.
+                                        // If user deselects last one -> Goes back to ALL.
+                                        return { ...prev, employeeIds: newVal };
+                                      }
+                                    });
+                                  }}
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                                />
+                                <div className="flex flex-col">
+                                  <span className="text-xs md:text-sm font-medium text-slate-700 dark:text-slate-200">{emp.name}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono">{emp.code}</span>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        {printAvailableEmployees.length === 0 && (
+                          <p className="text-center text-xs text-slate-400 py-4">لا يوجد موظفين لهذا الجهاز</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] text-slate-400">
+                      {printConfig.employeeIds.length === 0 ? 'يتم عرض تقرير لجميع الموظفين' : `تم تحديد ${printConfig.employeeIds.length} موظف`}
+                    </span>
+                    {printConfig.employeeIds.length > 0 && (
+                      <button
+                        onClick={() => setPrintConfig(c => ({ ...c, employeeIds: [] }))}
+                        className="text-[10px] text-blue-500 hover:text-blue-400 font-bold"
+                      >
+                        إلغاء التحديد
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 flex items-start gap-3">
+                  <AlertTriangle size={18} className="text-blue-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-blue-600 dark:text-blue-300 font-medium leading-relaxed">
+                    سيتم توليد تقرير PDF يحتوي فقط على ساعات ودقائق التأخير للموظفين المحددين في الفترة المختارة، جاهز للطباعة المباشرة.
+                  </p>
                 </div>
               </div>
 
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 flex items-start gap-3">
-                <AlertTriangle size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                <p className="text-xs text-blue-600 dark:text-blue-300 font-medium leading-relaxed">
-                  سيتم توليد تقرير PDF يحتوي فقط على ساعات ودقائق التأخير للموظفين المحددين في الفترة المختارة، جاهز للطباعة المباشرة.
-                </p>
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 bg-slate-50/50 dark:bg-slate-900">
+                <button
+                  onClick={() => setPrintModalOpen(false)}
+                  className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handlePrintDelayReport}
+                  className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold shadow-lg shadow-slate-900/20 active:scale-95 transition-all flex items-center gap-2"
+                >
+                  <Printer size={18} />
+                  طباعة التقرير
+                </button>
               </div>
             </div>
-
-            <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 bg-slate-50/50 dark:bg-slate-900">
-              <button
-                onClick={() => setPrintModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={handlePrintDelayReport}
-                className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold shadow-lg shadow-slate-900/20 active:scale-95 transition-all flex items-center gap-2"
-              >
-                <Printer size={18} />
-                طباعة التقرير
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Manual Entry Modal */}
       {
