@@ -1004,7 +1004,6 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     const filteredRaw = dataForExport.filter(log => {
       const logDate = new Date(log.timestamp);
       if (logDate < s || logDate > e) return false;
-      if (deviceSn && log.deviceSn !== deviceSn) return false;
       // Note: We filter logs by employee here, but we will "fill gaps" later for the selected employee(s)
       if (employeeId && log.employeeId !== employeeId) return false;
       return true;
