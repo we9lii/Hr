@@ -464,8 +464,13 @@ export const fetchAttendanceLogsRange = async (
 
 // --- EXPORTED SUB-FUNCTIONS ---
 
-export const fetchBridgeLogsRange = async (startDate: Date, endDate: Date, employeeId?: string, deviceSn?: string) => {
-  // Format Dates
+export const fetchBridgeLogsRange = async (
+  startDate: Date,
+  endDate: Date,
+  employeeId?: string,
+  deviceSn?: string,
+  onChunk?: (chunk: AttendanceRecord[]) => void
+) => {
   const fmt = (d: Date) => {
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -475,7 +480,7 @@ export const fetchBridgeLogsRange = async (startDate: Date, endDate: Date, emplo
   const startTimeMs = startDate.getTime();
 
   let allLogs: any[] = [];
-  const pageSize = 5000;
+  const pageSize = 1000; // Reduced to 1000 for faster TTFB (First Byte)
 
   const fetchPage = async (page: number) => {
     let path = `/biometric_api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
@@ -496,12 +501,19 @@ export const fetchBridgeLogsRange = async (startDate: Date, endDate: Date, emplo
   for (let batch = 0; batch < 10; batch++) {
     if (!keepGoing) break;
     const promises = [];
-    for (let i = 1; i <= 5; i++) promises.push(fetchPage((batch * 5) + i)); // 1..5, 6..10
+    const batchSize = 5;
+    for (let i = 1; i <= batchSize; i++) promises.push(fetchPage((batch * batchSize) + i));
 
     const results = await Promise.all(promises);
     for (const list of results) {
       if (list.length === 0) { keepGoing = false; break; }
-      allLogs = [...allLogs, ...list];
+
+      // Transform and Stream immediately
+      const chunk = list.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+      if (chunk.length > 0) {
+        allLogs = [...allLogs, ...chunk]; // Keep local copy for final return (legacy)
+        if (onChunk) onChunk(chunk); // Stream out
+      }
 
       const lastLog = list[list.length - 1];
       if (lastLog) {
@@ -513,13 +525,16 @@ export const fetchBridgeLogsRange = async (startDate: Date, endDate: Date, emplo
       if (list.length < pageSize) { keepGoing = false; break; }
     }
   }
-
-  // Transform
-  return allLogs.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+  return allLogs;
 };
 
-export const fetchLegacyLogsRange = async (startDate: Date, endDate: Date, employeeId?: string, deviceSn?: string) => {
-  // Format Dates
+export const fetchLegacyLogsRange = async (
+  startDate: Date,
+  endDate: Date,
+  employeeId?: string,
+  deviceSn?: string,
+  onChunk?: (chunk: AttendanceRecord[]) => void
+) => {
   const fmt = (d: Date) => {
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -546,7 +561,13 @@ export const fetchLegacyLogsRange = async (startDate: Date, endDate: Date, emplo
       const raw = await response.json();
       const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
       if (list.length === 0) break;
-      allLogs = [...allLogs, ...list];
+
+      // Transform and Stream
+      const chunk = list.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+      if (chunk.length > 0) {
+        allLogs = [...allLogs, ...chunk];
+        if (onChunk) onChunk(chunk);
+      }
 
       const lastLog = list[list.length - 1];
       if (lastLog) {
@@ -561,7 +582,7 @@ export const fetchLegacyLogsRange = async (startDate: Date, endDate: Date, emplo
     } catch (e) { console.warn("Legacy Error", e); break; }
   }
 
-  return allLogs.map(item => transformLog(item, startDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+  return allLogs;
 };
 
 // Helper: Transform Raw Log to AttendanceRecord

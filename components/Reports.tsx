@@ -609,26 +609,22 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         const e = new Date(endDate);
         e.setHours(23, 59, 59, 999);
 
-        // 1. Fetch from BRIDGE (New Server) - Should be fast
-        const bridgeData = await fetchBridgeLogsRange(s, e, selectedEmployee, deviceSn);
-        setRangeLogs(prev => {
-          const Combined = [...prev, ...bridgeData];
-          // Simple Dedup by ID
-          const unique = new Map();
-          Combined.forEach(item => unique.set(item.id, item));
-          return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        });
+        // Streaming Callback
+        const handleChunk = (chunk: AttendanceRecord[]) => {
+          setRangeLogs(prev => {
+            const Combined = [...prev, ...chunk];
+            const unique = new Map();
+            Combined.forEach(item => unique.set(item.id, item));
+            return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          });
+        };
 
-        // 2. Fetch from LEGACY (Old Server) - Might be slow
-        // We do this AFTER Bridge is done so user sees something immediately
-        // Note: Promise.all would block. Sequential let's us render first.
-        const legacyData = await fetchLegacyLogsRange(s, e, selectedEmployee, deviceSn);
-        setRangeLogs(prev => {
-          const Combined = [...prev, ...legacyData];
-          const unique = new Map();
-          Combined.forEach(item => unique.set(item.id, item));
-          return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        });
+        // 1. Fetch from BRIDGE (New Server)
+        // This will call handleChunk multiple times as pages arrive!
+        await fetchBridgeLogsRange(s, e, selectedEmployee, deviceSn, handleChunk);
+
+        // 2. Fetch from LEGACY (Old Server)
+        await fetchLegacyLogsRange(s, e, selectedEmployee, deviceSn, handleChunk);
 
       } finally {
         setRangeLoading(false);
