@@ -457,49 +457,47 @@ export const fetchAttendanceLogsRange = async (
   const startTimeMs = startDate.getTime(); // For Early Exit Check
 
   // --- 1. Fetch from Local Bridge (New Devices) ---
+  // --- 1. Fetch from Local Bridge (New Devices) ---
   const fetchBridgeLogs = async () => {
     let allLogs: any[] = [];
-    const pageSize = 1000;
+    const pageSize = 5000; // Increased to 5000 (Cover full month in 1 request usually)
 
-    // Loop up to 50 pages (50,000 records safety limit)
-    for (let page = 1; page <= 50; page++) {
+    // Parallel Fetching: Batch of 5 pages
+    const fetchPage = async (page: number) => {
       let path = `/biometric_api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
-
       if (Capacitor.isNativePlatform()) {
         path = `https://qssun.solar/api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
       }
-
       if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
       if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
-
       try {
         const response = await fetch(path);
-        if (!response.ok) break;
+        if (!response.ok) return [];
         const raw = await response.json();
-        const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+        return Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+      } catch { return []; }
+    };
 
-        if (list.length === 0) break;
+    let keepGoing = true;
+    for (let batch = 0; batch < 10; batch++) { // Max 10 batches of 5 = 50 pages
+      if (!keepGoing) break;
+      const promises = [];
+      for (let i = 1; i <= 5; i++) promises.push(fetchPage((batch * 5) + i));
 
+      const results = await Promise.all(promises);
+      for (const list of results) {
+        if (list.length === 0) { keepGoing = false; break; }
         allLogs = [...allLogs, ...list];
 
-        if (list.length < pageSize) break;
-
-        // Early Exit: If last log is older than startDate, stop fetching
+        // Early Exit Check (using start date)
         const lastLog = list[list.length - 1];
         if (lastLog) {
           let tStr = String(lastLog.punch_time || lastLog.check_time || lastLog.time || lastLog.timestamp || '');
           if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
           const lastDate = new Date(tStr);
-          if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) {
-            // Break logic: We reached older logs. 
-            // Note: Only works if sorting is DESC (Newest First) which we set in API params usually
-            break;
-          }
+          if (!isNaN(lastDate.getTime()) && lastDate.getTime() < startTimeMs) { keepGoing = false; break; }
         }
-
-      } catch (e) {
-        console.warn("Bridge API Fetch Failed:", e);
-        break;
+        if (list.length < pageSize) { keepGoing = false; break; }
       }
     }
     return allLogs;
