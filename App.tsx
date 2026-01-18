@@ -653,7 +653,16 @@ const App: React.FC = () => {
                               </td>
                               <td className="p-2 md:p-5">
                                 <span className="text-[9px] md:text-xs text-slate-400 truncate max-w-[80px] md:max-w-[200px] block" title={log.location?.address}>
-                                  {log.deviceAlias || (log.deviceSn ? (log.deviceSn === 'Web' ? 'الجوال' : `${log.deviceSn}`) : (log.location ? (log.location.address || `${log.location.lat.toFixed(4)}...`) : '-'))}
+                                  {(() => {
+                                    // 👑 VIP Rule: Faisal + Web/Mobile => Administration
+                                    if (log.employeeName &&
+                                      (log.employeeName.toLowerCase().includes('faisal') || log.employeeName.includes('فيصل')) &&
+                                      (log.deviceSn === 'Web' || log.deviceSn === 'Manual-Web' || log.deviceAlias === 'الجوال')) {
+                                      return 'الإدارة';
+                                    }
+                                    // Default Logic
+                                    return log.deviceAlias || (log.deviceSn ? (log.deviceSn === 'Web' ? 'الجوال' : `${log.deviceSn}`) : (log.location ? (log.location.address || `${log.location.lat.toFixed(4)}...`) : '-'));
+                                  })()}
                                 </span>
                               </td>
                             </tr>

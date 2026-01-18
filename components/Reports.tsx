@@ -609,10 +609,51 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         const e = new Date(endDate);
         e.setHours(23, 59, 59, 999);
 
+        // FIX 4093: Build a Dynamic Normalization Map for ALL employees
+        // This maps National IDs (or other alt IDs) -> System IDs
+        // So if a device sends "2562020083", we auto-convert it to "275" (or whatever the main ID is).
+        const normalizationMap = new Map<string, { code: string; name: string }>();
+        (allEmployees as any[]).forEach(emp => {
+          const mainId = emp.code;
+          const alts = [emp.national_id, emp.ssn, emp.identity_num, emp.identification_number, emp.other_id].filter(Boolean);
+          alts.forEach(alt => {
+            normalizationMap.set(String(alt), { code: String(mainId), name: emp.name });
+            // Also map the reverse if needed (though usually we want Alt -> Main)
+          });
+        });
+
+        // Add Manual Override for Abdullah just in case profile is empty
+        normalizationMap.set('275', { code: '2562020083', name: 'Abdullah ALoqab' }); // Re-verify this direction?
+        // Wait, earlier I said New Device = 275, Profile = 2562020083.
+        // So if log comes as 275, we want to map it to 2562020083.
+        // But 275 IS a System ID usually?
+        // In Abdullah's weird case, 275 is the "Alien" ID (New Device) and 256... is the "Main" ID?
+        // Let's support both directions safely.
+        // Actually, let's keep the logic simple: Map INCOMING ID to TARGET ID.
+        // For Abdullah: Incoming 275 -> Target 2562020083.
+        normalizationMap.set('275', { code: '2562020083', name: 'Abdullah ALoqab' });
+
         // Streaming Callback
         const handleChunk = (chunk: AttendanceRecord[]) => {
           setRangeLogs(prev => {
-            const Combined = [...prev, ...chunk];
+            // GENERIC FIX: Normalize IDs based on Map
+            const normalizedChunk = chunk.map(log => {
+              const rawId = String(log.employeeId);
+              if (normalizationMap.has(rawId)) {
+                // Only remap if the target is different (avoid infinite loops/no-ops)
+                const target = normalizationMap.get(rawId)!;
+                if (target.code !== rawId) {
+                  return { ...log, employeeId: target.code, empName: target.name || log.empName };
+                }
+              }
+              // Keep specifically the 275 check for safety if map didn't catch it
+              if (log.employeeId === '275') {
+                return { ...log, employeeId: '2562020083', empName: 'Abdullah ALoqab' };
+              }
+              return log;
+            });
+
+            const Combined = [...prev, ...normalizedChunk];
             const unique = new Map();
             Combined.forEach(item => unique.set(item.id, item));
             return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -620,18 +661,38 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
         };
 
         // 1. Fetch from BRIDGE (New Server)
-        // This will call handleChunk multiple times as pages arrive!
-        await fetchBridgeLogsRange(s, e, selectedEmployee, deviceSn, handleChunk);
+        // FIX 3949: For 'DAILY' reports, we MUST fetch ALL devices to catch cross-device scans (In on A, Out on B).
+        // We filter the RESULT later in the useMemo group logic.
+        const effectiveDeviceSn = reportType === 'DAILY' ? undefined : deviceSn;
+
+        // FIX 4022: Lookup Alt Code (National ID) for the selected employee to ensure we catch logs from New Bridge Devices
+        // that might use National ID instead of System Code.
+        let altCode: string | undefined = undefined;
+        if (selectedEmployee) {
+          const empObj = (allEmployees as any[]).find(e => e.code === selectedEmployee);
+          if (empObj) {
+            altCode = empObj.national_id || empObj.ssn || empObj.identity_num || empObj.identification_number || empObj.other_id;
+          }
+          // HARDCODE FIX: Specific mapping for Abdullah ALoqab (275) if National ID is missing in profile
+          // Bidirectional mapping to ensure we catch logs regardless of which ID is selected in the dropdown
+          if (selectedEmployee === '275') {
+            altCode = '2562020083';
+          } else if (selectedEmployee === '2562020083') {
+            altCode = '275';
+          }
+        }
+
+        await fetchBridgeLogsRange(s, e, selectedEmployee, effectiveDeviceSn, handleChunk, altCode);
 
         // 2. Fetch from LEGACY (Old Server)
-        await fetchLegacyLogsRange(s, e, selectedEmployee, deviceSn, handleChunk);
+        await fetchLegacyLogsRange(s, e, selectedEmployee, effectiveDeviceSn, handleChunk);
 
       } finally {
         setRangeLoading(false);
       }
     };
     run();
-  }, [startDate, endDate, selectedEmployee, deviceSn]);
+  }, [startDate, endDate, selectedEmployee, deviceSn, reportType]); // Added reportType dep
 
   useEffect(() => {
     setReportPage(1);
@@ -689,7 +750,10 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
       // Opt: Parse to number first to check range before allocating Date object
       const t = Date.parse(log.timestamp);
       if (t < startTime || t > endTime) return;
-      if (deviceSn && log.deviceSn !== deviceSn) return;
+      // FIX 3925: Do NOT filter strictly by device here. We need cross-device logs (In on A, Out on B).
+      // We will filter the *Group* later if it has NO relevant logs.
+      // if (deviceSn && log.deviceSn !== deviceSn) return; 
+
       if (selectedEmployee && log.employeeId !== selectedEmployee) return;
 
       const d = new Date(t);
@@ -703,20 +767,35 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
     // Process groups
     const rows: any[] = [];
     groups.forEach((dayLogs, key) => {
+      // FIX 3925 Part 2: Apply Device Filter to the GROUP.
+      // If user selected a device, only keep this day if at least ONE log matches the device.
+      if (deviceSn && !dayLogs.some(l => l.deviceSn === deviceSn)) return;
+
       const [empId] = key.split('|');
       // Sort ASC
       // Sort ASC using string comparison (much faster than new Date())
       dayLogs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-      const firstIn = dayLogs.find(l => l.type === 'CHECK_IN');
-      const lastOut = [...dayLogs].reverse().find(l => l.type === 'CHECK_OUT'); // robust last out
+      // FIX 3999: Robust Logic for "Dumb Devices" that don't send correct state.
+      // 1. Try to find explicit Check-In
+      let firstIn: any = dayLogs.find(l => l.type === 'CHECK_IN');
+      // 2. Fallback: If no explicit Check-In, use the FIRST log of the day (Assumed Entry)
+      if (!firstIn && dayLogs.length > 0) {
+        firstIn = dayLogs[0];
+      }
+
+      // 3. Try to find explicit Check-Out
+      let lastOut: any = [...dayLogs].reverse().find(l => l.type === 'CHECK_OUT');
+      // 4. Fallback: If no explicit Check-Out, use the LAST log of the day (Assumed Exit)
+      //    Condition: Must be distinct from firstIn to avoid single-punch being both In and Out (unless actually same time?)
+      const lastLog = dayLogs[dayLogs.length - 1];
+      if (!lastOut && lastLog && lastLog.id !== firstIn?.id) {
+        lastOut = lastLog;
+      }
 
       let breakMinutes = 0;
       let lastBreakOut: number | null = null;
       let lastCheckOut: number | null = null;
-
-      // Calculate breaks: Priority to explicit BREAK_OUT -> BREAK_IN
-      // Fallback: CHECK_OUT -> CHECK_IN (Implied)
       let explicitBreaksFound = false;
 
       dayLogs.forEach(l => {
@@ -2031,6 +2110,13 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                           ) : (
                             <div className="text-[10px] md:text-xs text-slate-400 font-mono truncate max-w-[150px] md:max-w-none block" title={log.location?.address}>
                               {(() => {
+                                // 👑 VIP Rule: Faisal + Web/Mobile => Administration
+                                if (log.employeeName &&
+                                  (log.employeeName.toLowerCase().includes('faisal') || log.employeeName.includes('فيصل')) &&
+                                  (log.deviceSn === 'Web' || log.deviceSn === 'Manual-Web' || log.deviceAlias === 'الجوال')) {
+                                  return 'الإدارة';
+                                }
+
                                 // 1. Use getDeviceConfig to resolve Alias (Handles overrides, partial matches, etc)
                                 const config = getDeviceConfig({
                                   sn: log.deviceSn,

@@ -13,8 +13,6 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
     const [devices, setDevices] = useState<Device[]>([]);
     const [loading, setLoading] = useState(false);
     const [expandedDevice, setExpandedDevice] = useState<string | null>(null);
-    const [syncing, setSyncing] = useState(false);
-    const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
     useEffect(() => {
         loadDevices();
@@ -62,32 +60,7 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
         }
     };
 
-    const handleSyncEmployees = async (targetSn: string) => {
-        setSyncing(true);
-        setSyncStatus('Requesting Device Upload...');
-        try {
-            // Trigger Pull Data (Device -> Server)
-            // This queues "DATA QUERY USERINFO" and "DATA QUERY FINGERTMP" commands
-            // Using relative path to avoid CORS (Proxied by Vite/Node)
-            const res = await fetch(`/iclock/trigger_pull?sn=${targetSn}`);
 
-            if (!res.ok) throw new Error('Failed to queue commands');
-            const data = await res.json();
-
-            setSyncStatus(`Commands Queued. Please Reboot Device.`);
-
-            // Clear status after delay
-            setTimeout(() => {
-                setSyncStatus(null);
-                setSyncing(false);
-            }, 5000);
-
-        } catch (e: any) {
-            console.error(e);
-            setSyncStatus(`Error: ${e.message}`);
-            setSyncing(false);
-        }
-    };
 
     return (
         <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
@@ -157,22 +130,7 @@ const DeviceManager: React.FC<DeviceManagerProps> = ({ onDevicesUpdated }) => {
                                         </div>
                                     </div>
 
-                                    {/* Sync Button (Only for Target Device) */}
-                                    {isTargetDevice && (
-                                        <div className="mt-2 border-t border-slate-800 pt-3 flex justify-between items-center">
-                                            <span className="text-[10px] text-slate-500">ادوات المزامنة</span>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleSyncEmployees(device.sn); }}
-                                                disabled={syncing}
-                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${syncing
-                                                    ? 'bg-blue-900/20 border-blue-800/30 text-blue-400 cursor-wait'
-                                                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-blue-600 hover:text-white hover:border-blue-500'}`}
-                                            >
-                                                {syncing ? <RefreshCw size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-                                                {syncStatus || 'مزامنة الموظفين'}
-                                            </button>
-                                        </div>
-                                    )}
+
                                 </div>
 
                                 {/* Expanded View (Read Only) */}
