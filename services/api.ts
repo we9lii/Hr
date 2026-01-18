@@ -1329,9 +1329,6 @@ export const fetchAllEmployees = async (): Promise<any[]> => {
   let url = `${BASE_FOR_ENV}/personnel/api/employees/?page_size=200`;
   const map = new Map<string, any>();
 
-  // 1. Fetch Local Emails
-  const emailMap = await fetchLocalEmails();
-
   for (let i = 0; i < 50; i++) {
     try {
       const response = await fetch(url, { method: 'GET', headers });
@@ -1368,11 +1365,8 @@ export const fetchAllEmployees = async (): Promise<any[]> => {
           // Map deeper objects if present
           dept_name: it.department ? (it.department.dept_name || it.department.name) : undefined,
           position_name: it.position ? (it.position.position_name || it.position.name) : undefined,
-          // Map deeper objects if present
-          dept_name: it.department ? (it.department.dept_name || it.department.name) : undefined,
-          position_name: it.position ? (it.position.position_name || it.position.name) : undefined,
           area_name: (it.area && it.area.length > 0) ? (it.area[0].area_name || it.area[0].name) : undefined,
-          email: emailMap.get(code) || it.email // Merge Local Email
+          email: it.email // Use Legacy Email only
         };
 
         if (!map.has(code)) map.set(code, fullObj);
