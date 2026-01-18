@@ -451,8 +451,27 @@ export const fetchAttendanceLogsRange = async (
   // Wait, the exports should be defined separately. I will define them FIRST.
   // THIS BLOCK REPLACES THE WHOLE FUNCTION body.
 
+  // Lookup Alt Code (National ID)
+  let altCode: string | undefined = undefined;
+  if (employeeId && employeeId !== 'ALL') {
+    try {
+      // 1. We need the list of employees. Ideally cached or passed in contexts.
+      // Since this is an async API call, we can quickly fetch All Employees (usually cached by browser or fast)
+      // OR better, we rely on the component to pass it? No, signature is fixed.
+      // We'll call fetchAllEmployees() here. It has internal looping but it's the only way to be "Software Only".
+      // NOTE: This might be slow if list is huge. Optimally, Reports.tsx should cache this map.
+      // Let's assume fetchAllEmployees is fast enough or use a global cache if needed.
+      const emps = await fetchAllEmployees();
+      const emp = emps.find(e => e.code === employeeId);
+      if (emp) {
+        // Try known fields for National ID
+        altCode = emp.national_id || emp.ssn || emp.identity_num || emp.identification_number || emp.other_id;
+      }
+    } catch { } // Fail silent
+  }
+
   const [bridge, legacy] = await Promise.all([
-    fetchBridgeLogsRange(startDate, endDate, employeeId, deviceSn),
+    fetchBridgeLogsRange(startDate, endDate, employeeId, deviceSn, undefined, altCode), // Pass altCode
     fetchLegacyLogsRange(startDate, endDate, employeeId, deviceSn)
   ]);
 
@@ -469,7 +488,8 @@ export const fetchBridgeLogsRange = async (
   endDate: Date,
   employeeId?: string,
   deviceSn?: string,
-  onChunk?: (chunk: AttendanceRecord[]) => void
+  onChunk?: (chunk: AttendanceRecord[]) => void,
+  altCode?: string
 ) => {
   const SYSTEM_START_DATE = new Date('2025-12-01T00:00:00');
 
@@ -496,6 +516,7 @@ export const fetchBridgeLogsRange = async (
       path = `https://qssun.solar/api/iclock/transactions.php?punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}&page=${page}&page_size=${pageSize}`;
     }
     if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+    if (altCode) path += `&alt_emp_code=${altCode}`;
     if (deviceSn && deviceSn !== 'ALL') path += `&terminal_sn=${deviceSn}`;
     try {
       const response = await fetch(path);

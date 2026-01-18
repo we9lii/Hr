@@ -69,6 +69,9 @@ try {
     $end_date = $_GET['punch_time__lte'] ?? date('Y-m-d 23:59:59');
 
     $emp_code = $_GET['emp_code'] ?? '';
+    // Support alternate code (e.g. National ID)
+    $alt_emp_code = $_GET['alt_emp_code'] ?? '';
+
     // Support both 'terminal_sn' and 'device_sn'
     $terminal_sn = $_GET['terminal_sn'] ?? ($_GET['device_sn'] ?? '');
 
@@ -81,10 +84,20 @@ try {
     $params = [$start_date, $end_date];
 
     if (!empty($emp_code) && $emp_code !== 'ALL') {
-        // If searching for specific employee code, check BOTH user_id OR card_number
-        $sql .= " AND (l.user_id = ? OR u.card_number = ?)";
-        $params[] = $emp_code;
-        $params[] = $emp_code;
+        // If searching for specific employee code, check:
+        // 1. user_id = emp_code (Direct Match)
+        // 2. card_number = emp_code (Workaround fix)
+        // 3. user_id = alt_emp_code (Software Mapping fix)
+        if (!empty($alt_emp_code)) {
+            $sql .= " AND (l.user_id = ? OR u.card_number = ? OR l.user_id = ?)";
+            $params[] = $emp_code;
+            $params[] = $emp_code;
+            $params[] = $alt_emp_code;
+        } else {
+            $sql .= " AND (l.user_id = ? OR u.card_number = ?)";
+            $params[] = $emp_code;
+            $params[] = $emp_code;
+        }
     }
 
     if (!empty($terminal_sn) && $terminal_sn !== 'ALL') {
