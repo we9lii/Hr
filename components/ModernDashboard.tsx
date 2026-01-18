@@ -72,7 +72,7 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
     ], [stats]);
 
     const [page, setPage] = useState(1);
-    const pageSize = 5;
+    const pageSize = 10;
     const totalPages = Math.max(1, Math.ceil(logs.length / pageSize));
     const pageLogs = useMemo(() => {
         const start = (page - 1) * pageSize;
