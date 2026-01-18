@@ -42,6 +42,8 @@ export const DEVICE_RULES: DeviceRule[] = [
         aliasOverride: 'محلات القصيم ( 2 )'
     },
 
+
+
     // 1. الصرار (Al-Sarrar)
     {
         matcher: (d) => (d.alias || '').includes('الصرار'),

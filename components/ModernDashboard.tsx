@@ -236,7 +236,16 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({
                                             <td className="p-2 md:p-3 font-bold text-white text-[10px] md:text-sm">{log.employeeName}</td>
                                             <td className="p-2 md:p-5">
                                                 <span className="text-[10px] md:text-xs text-slate-400 truncate max-w-[100px] md:max-w-[200px] block" title={log.location?.address}>
-                                                    {getDeviceConfig({ sn: log.deviceSn || '', alias: log.deviceAlias }).alias || log.location?.address || '-'}
+                                                    {(() => {
+                                                        const config = getDeviceConfig({ sn: log.deviceSn || '', alias: log.deviceAlias });
+                                                        // 👑 VIP Rule: If Faisal uses Web => Show 'Administration'
+                                                        if (log.employeeName &&
+                                                            (log.employeeName.toLowerCase().includes('faisal') || log.employeeName.includes('فيصل')) &&
+                                                            (log.deviceSn === 'Web' || log.deviceSn === 'Manual-Web')) {
+                                                            return 'الإدارة';
+                                                        }
+                                                        return config.alias || log.location?.address || '-';
+                                                    })()}
                                                 </span>
                                                 {/* Accuracy Indicator */}
                                                 {log.accuracy !== undefined && (
