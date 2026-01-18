@@ -408,6 +408,26 @@ const Employees: React.FC = () => {
                             <UserPlus size={18} />
                             <span>إضافة موظف جديد</span>
                         </button>
+
+                        <button
+                            onClick={() => {
+                                const missing = employees.filter(e => !e.email);
+                                if (missing.length === 0) {
+                                    alert('🎉 ممتاز! جميع الموظفين لديهم إيميلات.');
+                                } else {
+                                    const list = missing.map(e => `${e.name}\t${e.code}`).join('\n'); // Tab separated for Excel
+                                    navigator.clipboard.writeText(list).then(() => {
+                                        alert(`⚠️ تم نسخ قائمة ${missing.length} موظف إلى الحافظة!\nيمكنك لصقها في Excel أو الملاحظات.\n\nالأسماء:\n${list}`);
+                                    }).catch(() => {
+                                        alert(`⚠️ يوجد ${missing.length} موظف:\n\n${list}`);
+                                    });
+                                }
+                            }}
+                            className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors"
+                            title="نسخ قائمة الموظفين الذين ليس لديهم بريد إلكتروني"
+                        >
+                            <span className="text-xs font-bold">موظفين بلا إيميل 📋</span>
+                        </button>
                     </div>
                 </div>
 
@@ -571,424 +591,428 @@ const Employees: React.FC = () => {
 
 
             {/* Add Employee Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+            {
+                isModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar">
 
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-800/30">
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                <UserPlus size={24} className="text-blue-500" />
-                                {isEditMode ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'}
-                            </h3>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors">
-                                <X size={20} />
-                            </button>
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-800/30">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <UserPlus size={24} className="text-blue-500" />
+                                    {isEditMode ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'}
+                                </h3>
+                                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Modal Body (Form) */}
+                            <form onSubmit={handleSubmit} className="p-6 space-y-8">
+
+                                {/* Section 1: Basic Info */}
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                        <User size={16} /> البيانات الشخصية
+                                    </h4>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Emp Code */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">الرقم الوظيفي (Personal ID) <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                required
+                                                disabled={isEditMode} // Usually shouldn't change ID
+                                                value={formData.emp_code}
+                                                onChange={e => setFormData({ ...formData, emp_code: e.target.value })}
+                                                className={`w - full p - 3 bg - slate - 950 border border - slate - 800 rounded - xl text - white focus: border - blue - 500 focus: ring - 1 focus: ring - blue - 500 outline - none transition - all font - mono ${isEditMode ? 'opacity-50 cursor-not-allowed' : ''} `}
+                                                placeholder="مثال: 1010"
+                                            />
+                                        </div>
+
+                                        {/* Hiring Date */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">تاريخ التعيين</label>
+                                            <input
+                                                type="date"
+                                                value={formData.hire_date}
+                                                onChange={e => setFormData({ ...formData, hire_date: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
+                                            />
+                                        </div>
+
+                                        {/* First Name */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">الاسم الأول <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={formData.first_name}
+                                                onChange={e => setFormData({ ...formData, first_name: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
+                                                placeholder="محمد"
+                                            />
+                                        </div>
+
+                                        {/* Last Name */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">الاسم الأخير</label>
+                                            <input
+                                                type="text"
+                                                value={formData.last_name}
+                                                onChange={e => setFormData({ ...formData, last_name: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
+                                                placeholder="أحمد"
+                                            />
+                                        </div>
+
+                                        {/* Email - NEW */}
+                                        <div className="space-y-2 col-span-2">
+                                            <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                                                <Mail size={12} /> البريد الإلكتروني
+                                            </label>
+                                            <input
+                                                type="email"
+                                                value={formData.email}
+                                                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
+                                                placeholder="employee@example.com"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="w-full h-px bg-slate-800/50" />
+
+                                {/* Section 2: Work Info */}
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                        <Briefcase size={16} /> معلومات العمل
+                                    </h4>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Department */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">القسم</label>
+                                            <div className="relative">
+                                                <select
+                                                    value={formData.department}
+                                                    onChange={e => setFormData({ ...formData, department: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none appearance-none"
+                                                >
+                                                    {departments.map(d => (
+                                                        <option key={d.id} value={d.id}>{d.dept_name || d.name || d.alias || `Dept ${d.id} `}</option>
+                                                    ))}
+                                                    {departments.length === 0 && <option value="1">الرئيسي (افتراضي)</option>}
+                                                </select>
+                                                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                                            </div>
+                                        </div>
+
+                                        {/* Area */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">المنطقة (الموقع)</label>
+                                            <div className="relative">
+                                                <select
+                                                    value={formData.area}
+                                                    onChange={e => setFormData({ ...formData, area: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none appearance-none"
+                                                >
+                                                    {areas.map(a => (
+                                                        <option key={a.id} value={a.id}>{a.area_name || a.name || `Area ${a.id} `}</option>
+                                                    ))}
+                                                    {areas.length === 0 && <option value="1">المقر الرئيسي (افتراضي)</option>}
+                                                </select>
+                                                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                                            </div>
+                                        </div>
+
+                                        {/* Position */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">المسمى الوظيفي</label>
+                                            <div className="relative">
+                                                <select
+                                                    value={formData.position}
+                                                    onChange={e => setFormData({ ...formData, position: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none appearance-none"
+                                                >
+                                                    <option value="">(بدون مسمى)</option>
+                                                    {positions.map(p => (
+                                                        <option key={p.id} value={p.id}>{p.position_name || p.name || `Position ${p.id} `}</option>
+                                                    ))}
+                                                </select>
+                                                <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                                            </div>
+                                        </div>
+
+                                        {/* Mobile */}
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">رقم الجوال</label>
+                                            <input
+                                                type="tel"
+                                                value={formData.mobile}
+                                                onChange={e => setFormData({ ...formData, mobile: e.target.value })}
+                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
+                                                placeholder="050xxxxxxx"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-4 pt-4 border-t border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsModalOpen(false)}
+                                        className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-colors"
+                                    >
+                                        إلغاء
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {submitting ? 'جاري الحفظ...' : 'حفظ البيانات'}
+                                        <Check className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                            </form>
                         </div>
-
-                        {/* Modal Body (Form) */}
-                        <form onSubmit={handleSubmit} className="p-6 space-y-8">
-
-                            {/* Section 1: Basic Info */}
-                            <div className="space-y-4">
-                                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                                    <User size={16} /> البيانات الشخصية
-                                </h4>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Emp Code */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">الرقم الوظيفي (Personal ID) <span className="text-red-500">*</span></label>
-                                        <input
-                                            type="text"
-                                            required
-                                            disabled={isEditMode} // Usually shouldn't change ID
-                                            value={formData.emp_code}
-                                            onChange={e => setFormData({ ...formData, emp_code: e.target.value })}
-                                            className={`w - full p - 3 bg - slate - 950 border border - slate - 800 rounded - xl text - white focus: border - blue - 500 focus: ring - 1 focus: ring - blue - 500 outline - none transition - all font - mono ${isEditMode ? 'opacity-50 cursor-not-allowed' : ''} `}
-                                            placeholder="مثال: 1010"
-                                        />
-                                    </div>
-
-                                    {/* Hiring Date */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">تاريخ التعيين</label>
-                                        <input
-                                            type="date"
-                                            value={formData.hire_date}
-                                            onChange={e => setFormData({ ...formData, hire_date: e.target.value })}
-                                            className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
-                                        />
-                                    </div>
-
-                                    {/* First Name */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">الاسم الأول <span className="text-red-500">*</span></label>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={formData.first_name}
-                                            onChange={e => setFormData({ ...formData, first_name: e.target.value })}
-                                            className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
-                                            placeholder="محمد"
-                                        />
-                                    </div>
-
-                                    {/* Last Name */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">الاسم الأخير</label>
-                                        <input
-                                            type="text"
-                                            value={formData.last_name}
-                                            onChange={e => setFormData({ ...formData, last_name: e.target.value })}
-                                            className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
-                                            placeholder="أحمد"
-                                        />
-                                    </div>
-
-                                    {/* Email - NEW */}
-                                    <div className="space-y-2 col-span-2">
-                                        <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                                            <Mail size={12} /> البريد الإلكتروني
-                                        </label>
-                                        <input
-                                            type="email"
-                                            value={formData.email}
-                                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                            className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
-                                            placeholder="employee@example.com"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="w-full h-px bg-slate-800/50" />
-
-                            {/* Section 2: Work Info */}
-                            <div className="space-y-4">
-                                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                                    <Briefcase size={16} /> معلومات العمل
-                                </h4>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Department */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">القسم</label>
-                                        <div className="relative">
-                                            <select
-                                                value={formData.department}
-                                                onChange={e => setFormData({ ...formData, department: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none appearance-none"
-                                            >
-                                                {departments.map(d => (
-                                                    <option key={d.id} value={d.id}>{d.dept_name || d.name || d.alias || `Dept ${d.id} `}</option>
-                                                ))}
-                                                {departments.length === 0 && <option value="1">الرئيسي (افتراضي)</option>}
-                                            </select>
-                                            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
-                                        </div>
-                                    </div>
-
-                                    {/* Area */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">المنطقة (الموقع)</label>
-                                        <div className="relative">
-                                            <select
-                                                value={formData.area}
-                                                onChange={e => setFormData({ ...formData, area: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none appearance-none"
-                                            >
-                                                {areas.map(a => (
-                                                    <option key={a.id} value={a.id}>{a.area_name || a.name || `Area ${a.id} `}</option>
-                                                ))}
-                                                {areas.length === 0 && <option value="1">المقر الرئيسي (افتراضي)</option>}
-                                            </select>
-                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
-                                        </div>
-                                    </div>
-
-                                    {/* Position */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">المسمى الوظيفي</label>
-                                        <div className="relative">
-                                            <select
-                                                value={formData.position}
-                                                onChange={e => setFormData({ ...formData, position: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none appearance-none"
-                                            >
-                                                <option value="">(بدون مسمى)</option>
-                                                {positions.map(p => (
-                                                    <option key={p.id} value={p.id}>{p.position_name || p.name || `Position ${p.id} `}</option>
-                                                ))}
-                                            </select>
-                                            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
-                                        </div>
-                                    </div>
-
-                                    {/* Mobile */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">رقم الجوال</label>
-                                        <input
-                                            type="tel"
-                                            value={formData.mobile}
-                                            onChange={e => setFormData({ ...formData, mobile: e.target.value })}
-                                            className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
-                                            placeholder="050xxxxxxx"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="flex items-center gap-4 pt-4 border-t border-slate-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-colors"
-                                >
-                                    إلغاء
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={submitting}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                >
-                                    {submitting ? 'جاري الحفظ...' : 'حفظ البيانات'}
-                                    <Check className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                        </form>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Manual Attendance Modal */}
-            {isManualModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+            {
+                isManualModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
 
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-800/30">
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                <ClipboardList size={24} className="text-purple-500" />
-                                {editLogId ? 'تعديل حركة / عذر' : 'تسجيل حركة / عذر يدوي'}
-                            </h3>
-                            <button onClick={() => setIsManualModalOpen(false)} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Modal Body */}
-                        <form onSubmit={handleManualSubmit} className="p-6 space-y-6">
-
-                            {/* Employee Select (Searchable) */}
-                            <div className="space-y-2 relative" ref={(node) => {
-                                // Click outside handler to close list could go here, for simplicity we just rely on selection
-                            }}>
-                                <label className="text-xs font-bold text-slate-300">الموظف <span className="text-red-500">*</span></label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={manualSearch}
-                                        onChange={(e) => {
-                                            setManualSearch(e.target.value);
-                                            setShowEmpList(true);
-                                        }}
-                                        onFocus={() => setShowEmpList(true)}
-                                        className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none font-mono"
-                                        placeholder="اكتب اسم الموظف..."
-                                    />
-                                    <User className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
-
-                                    {showEmpList && (
-                                        <div className="absolute top-full left-0 w-full mt-1 max-h-48 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 custom-scrollbar">
-                                            {employees
-                                                .filter(e => e.name.toLowerCase().includes(manualSearch.toLowerCase()) || e.code.includes(manualSearch))
-                                                .map(e => (
-                                                    <div
-                                                        key={e.code}
-                                                        onClick={() => {
-                                                            setManualData({ ...manualData, emp_code: e.code });
-                                                            setManualSearch(e.name); // Set display name
-                                                            setShowEmpList(false); // Close list
-                                                        }}
-                                                        className="p-3 hover:bg-slate-800 cursor-pointer text-slate-300 hover:text-white flex justify-between items-center border-b border-slate-800/50 last:border-0"
-                                                    >
-                                                        <span>{e.name}</span>
-                                                        <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">{e.code}</span>
-                                                    </div>
-                                                ))}
-                                            {employees.filter(e => e.name.toLowerCase().includes(manualSearch.toLowerCase()) || e.code.includes(manualSearch)).length === 0 && (
-                                                <div className="p-3 text-center text-slate-500 text-sm">لا نتائج</div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Mode Toggle */}
-                            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsBulk(false)}
-                                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!isBulk ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
-                                >
-                                    حركة واحدة
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsBulk(true)}
-                                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${isBulk ? 'bg-purple-900/30 text-purple-400 border border-purple-500/30 shadow' : 'text-slate-400 hover:text-slate-300'}`}
-                                >
-                                    فترة (أيام متعددة)
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-800/30">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <ClipboardList size={24} className="text-purple-500" />
+                                    {editLogId ? 'تعديل حركة / عذر' : 'تسجيل حركة / عذر يدوي'}
+                                </h3>
+                                <button onClick={() => setIsManualModalOpen(false)} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors">
+                                    <X size={20} />
                                 </button>
                             </div>
 
-                            {/* Dynamic Inputs */}
-                            {isBulk ? (
-                                <div className="space-y-4 animate-fade-in">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-300">من تاريخ</label>
-                                            <input
-                                                type="date"
-                                                required
-                                                value={bulkData.startDate}
-                                                onChange={e => setBulkData({ ...bulkData, startDate: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-300">إلى تاريخ</label>
-                                            <input
-                                                type="date"
-                                                required
-                                                value={bulkData.endDate}
-                                                onChange={e => setBulkData({ ...bulkData, endDate: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-300">وقت الدخول</label>
-                                            <input
-                                                type="time"
-                                                required
-                                                value={bulkData.startTime}
-                                                onChange={e => setBulkData({ ...bulkData, startTime: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none ltr"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-300">وقت الخروج</label>
-                                            <input
-                                                type="time"
-                                                required
-                                                value={bulkData.endTime}
-                                                onChange={e => setBulkData({ ...bulkData, endTime: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none ltr"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
+                            {/* Modal Body */}
+                            <form onSubmit={handleManualSubmit} className="p-6 space-y-6">
+
+                                {/* Employee Select (Searchable) */}
+                                <div className="space-y-2 relative" ref={(node) => {
+                                    // Click outside handler to close list could go here, for simplicity we just rely on selection
+                                }}>
+                                    <label className="text-xs font-bold text-slate-300">الموظف <span className="text-red-500">*</span></label>
+                                    <div className="relative">
                                         <input
-                                            type="checkbox"
-                                            id="includeWeekends"
-                                            checked={bulkData.includeWeekends}
-                                            onChange={e => setBulkData({ ...bulkData, includeWeekends: e.target.checked })}
-                                            className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                                            type="text"
+                                            value={manualSearch}
+                                            onChange={(e) => {
+                                                setManualSearch(e.target.value);
+                                                setShowEmpList(true);
+                                            }}
+                                            onFocus={() => setShowEmpList(true)}
+                                            className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none font-mono"
+                                            placeholder="اكتب اسم الموظف..."
                                         />
-                                        <label htmlFor="includeWeekends" className="text-sm text-slate-400 select-none cursor-pointer">
-                                            تضمين أيام العطلة الأسبوعية (الجمعة والسبت)
-                                        </label>
+                                        <User className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+
+                                        {showEmpList && (
+                                            <div className="absolute top-full left-0 w-full mt-1 max-h-48 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 custom-scrollbar">
+                                                {employees
+                                                    .filter(e => e.name.toLowerCase().includes(manualSearch.toLowerCase()) || e.code.includes(manualSearch))
+                                                    .map(e => (
+                                                        <div
+                                                            key={e.code}
+                                                            onClick={() => {
+                                                                setManualData({ ...manualData, emp_code: e.code });
+                                                                setManualSearch(e.name); // Set display name
+                                                                setShowEmpList(false); // Close list
+                                                            }}
+                                                            className="p-3 hover:bg-slate-800 cursor-pointer text-slate-300 hover:text-white flex justify-between items-center border-b border-slate-800/50 last:border-0"
+                                                        >
+                                                            <span>{e.name}</span>
+                                                            <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">{e.code}</span>
+                                                        </div>
+                                                    ))}
+                                                {employees.filter(e => e.name.toLowerCase().includes(manualSearch.toLowerCase()) || e.code.includes(manualSearch)).length === 0 && (
+                                                    <div className="p-3 text-center text-slate-500 text-sm">لا نتائج</div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">وقت التسجيل <span className="text-red-500">*</span></label>
-                                        <div className="relative">
+
+                                {/* Mode Toggle */}
+                                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsBulk(false)}
+                                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!isBulk ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                                    >
+                                        حركة واحدة
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsBulk(true)}
+                                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${isBulk ? 'bg-purple-900/30 text-purple-400 border border-purple-500/30 shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                                    >
+                                        فترة (أيام متعددة)
+                                    </button>
+                                </div>
+
+                                {/* Dynamic Inputs */}
+                                {isBulk ? (
+                                    <div className="space-y-4 animate-fade-in">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-300">من تاريخ</label>
+                                                <input
+                                                    type="date"
+                                                    required
+                                                    value={bulkData.startDate}
+                                                    onChange={e => setBulkData({ ...bulkData, startDate: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-300">إلى تاريخ</label>
+                                                <input
+                                                    type="date"
+                                                    required
+                                                    value={bulkData.endDate}
+                                                    onChange={e => setBulkData({ ...bulkData, endDate: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-300">وقت الدخول</label>
+                                                <input
+                                                    type="time"
+                                                    required
+                                                    value={bulkData.startTime}
+                                                    onChange={e => setBulkData({ ...bulkData, startTime: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none ltr"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-300">وقت الخروج</label>
+                                                <input
+                                                    type="time"
+                                                    required
+                                                    value={bulkData.endTime}
+                                                    onChange={e => setBulkData({ ...bulkData, endTime: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none ltr"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
                                             <input
-                                                type="datetime-local"
-                                                required
-                                                value={manualData.punch_time}
-                                                onChange={e => setManualData({ ...manualData, punch_time: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
+                                                type="checkbox"
+                                                id="includeWeekends"
+                                                checked={bulkData.includeWeekends}
+                                                onChange={e => setBulkData({ ...bulkData, includeWeekends: e.target.checked })}
+                                                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
                                             />
-                                            <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                                            <label htmlFor="includeWeekends" className="text-sm text-slate-400 select-none cursor-pointer">
+                                                تضمين أيام العطلة الأسبوعية (الجمعة والسبت)
+                                            </label>
                                         </div>
                                     </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">وقت التسجيل <span className="text-red-500">*</span></label>
+                                            <div className="relative">
+                                                <input
+                                                    type="datetime-local"
+                                                    required
+                                                    value={manualData.punch_time}
+                                                    onChange={e => setManualData({ ...manualData, punch_time: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none"
+                                                />
+                                                <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                                            </div>
+                                        </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-300">الحالة <span className="text-red-500">*</span></label>
-                                        <div className="relative">
-                                            <select
-                                                value={manualData.punch_state}
-                                                onChange={e => setManualData({ ...manualData, punch_state: e.target.value })}
-                                                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none appearance-none"
-                                            >
-                                                <option value="0">تسجيل دخول (Check In)</option>
-                                                <option value="1">تسجيل خروج (Check Out)</option>
-                                                <option value="100">⚠️ غياب (Absence)</option>
-                                                <option value="4">بداية إضافي (Overtime In)</option>
-                                                <option value="5">نهاية إضافي (Overtime Out)</option>
-                                                <option value="2">بداية استراحة (Break Out)</option>
-                                                <option value="3">نهاية استراحة (Break In)</option>
-                                            </select>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-300">الحالة <span className="text-red-500">*</span></label>
+                                            <div className="relative">
+                                                <select
+                                                    value={manualData.punch_state}
+                                                    onChange={e => setManualData({ ...manualData, punch_state: e.target.value })}
+                                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none appearance-none"
+                                                >
+                                                    <option value="0">تسجيل دخول (Check In)</option>
+                                                    <option value="1">تسجيل خروج (Check Out)</option>
+                                                    <option value="100">⚠️ غياب (Absence)</option>
+                                                    <option value="4">بداية إضافي (Overtime In)</option>
+                                                    <option value="5">نهاية إضافي (Overtime Out)</option>
+                                                    <option value="2">بداية استراحة (Break Out)</option>
+                                                    <option value="3">نهاية استراحة (Break In)</option>
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
+                                )}
+
+                                {/* Reason / Purpose */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-300">سبب الحركة / العذر</label>
+                                    <textarea
+                                        value={manualData.purpose}
+                                        onChange={e => setManualData({ ...manualData, purpose: e.target.value })}
+                                        className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none h-24 resize-none"
+                                        placeholder="اكتب التبرير أو العذر هنا..."
+                                    />
                                 </div>
-                            )}
 
-                            {/* Reason / Purpose */}
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-300">سبب الحركة / العذر</label>
-                                <textarea
-                                    value={manualData.purpose}
-                                    onChange={e => setManualData({ ...manualData, purpose: e.target.value })}
-                                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-purple-500 outline-none h-24 resize-none"
-                                    placeholder="اكتب التبرير أو العذر هنا..."
-                                />
-                            </div>
-
-                            {/* File Attachment (Placeholder) */}
-                            <div className="space-y-2 opacity-50 cursor-not-allowed" title="سيتم تفعيل رفع الملفات قريباً">
-                                <label className="text-xs font-bold text-slate-300 flex items-center gap-2">
-                                    مرفق (عذر طبي/رسمي) <span className="text-[10px] bg-slate-700 px-2 rounded-full">Coming Soon</span>
-                                </label>
-                                <div className="w-full p-3 bg-slate-950 border border-slate-800 border-dashed rounded-xl text-slate-500 flex items-center justify-center gap-2">
-                                    <FileText size={16} />
-                                    <span>لم يتم اختيار ملف</span>
+                                {/* File Attachment (Placeholder) */}
+                                <div className="space-y-2 opacity-50 cursor-not-allowed" title="سيتم تفعيل رفع الملفات قريباً">
+                                    <label className="text-xs font-bold text-slate-300 flex items-center gap-2">
+                                        مرفق (عذر طبي/رسمي) <span className="text-[10px] bg-slate-700 px-2 rounded-full">Coming Soon</span>
+                                    </label>
+                                    <div className="w-full p-3 bg-slate-950 border border-slate-800 border-dashed rounded-xl text-slate-500 flex items-center justify-center gap-2">
+                                        <FileText size={16} />
+                                        <span>لم يتم اختيار ملف</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Actions */}
-                            <div className="flex items-center gap-4 pt-4 border-t border-slate-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsManualModalOpen(false)}
-                                    className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-colors"
-                                >
-                                    إلغاء
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={submitting}
-                                    className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                >
-                                    {submitting ? 'جاري الحفظ...' : (editLogId ? 'حفظ التعديلات' : 'تسجيل الحركة')}
-                                    <Check className="w-5 h-5" />
-                                </button>
-                            </div>
+                                {/* Actions */}
+                                <div className="flex items-center gap-4 pt-4 border-t border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsManualModalOpen(false)}
+                                        className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-colors"
+                                    >
+                                        إلغاء
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {submitting ? 'جاري الحفظ...' : (editLogId ? 'حفظ التعديلات' : 'تسجيل الحركة')}
+                                        <Check className="w-5 h-5" />
+                                    </button>
+                                </div>
 
-                        </form>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-        </div>
+        </div >
     );
 };
 

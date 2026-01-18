@@ -25,6 +25,7 @@ export interface Employee {
   position: string;
   avatarUrl?: string;
   national_id?: string;
+  email?: string;
   card_number?: string;
 }
 

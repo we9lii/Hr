@@ -1304,10 +1304,33 @@ export const fetchEmployeeCount = async (): Promise<number> => {
   return count;
 };
 
+// New: Fetch Local Emails from PHP Backend
+const fetchLocalEmails = async (): Promise<Map<string, string>> => {
+  try {
+    let url = '/biometric_api/api/users.php'; // Local Proxy path
+    if (Capacitor.isNativePlatform()) {
+      url = 'https://qssun.solar/api/api/users.php';
+    }
+    const res = await fetch(url);
+    if (!res.ok) return new Map();
+    const data = await res.json();
+    const map = new Map<string, string>();
+    if (Array.isArray(data)) {
+      data.forEach((u: any) => {
+        if (u.user_id && u.email) map.set(String(u.user_id), u.email);
+      });
+    }
+    return map;
+  } catch { return new Map(); }
+};
+
 export const fetchAllEmployees = async (): Promise<any[]> => {
   const headers = await getHeaders();
   let url = `${BASE_FOR_ENV}/personnel/api/employees/?page_size=200`;
   const map = new Map<string, any>();
+
+  // 1. Fetch Local Emails
+  const emailMap = await fetchLocalEmails();
 
   for (let i = 0; i < 50; i++) {
     try {
@@ -1345,7 +1368,11 @@ export const fetchAllEmployees = async (): Promise<any[]> => {
           // Map deeper objects if present
           dept_name: it.department ? (it.department.dept_name || it.department.name) : undefined,
           position_name: it.position ? (it.position.position_name || it.position.name) : undefined,
-          area_name: (it.area && it.area.length > 0) ? (it.area[0].area_name || it.area[0].name) : undefined
+          // Map deeper objects if present
+          dept_name: it.department ? (it.department.dept_name || it.department.name) : undefined,
+          position_name: it.position ? (it.position.position_name || it.position.name) : undefined,
+          area_name: (it.area && it.area.length > 0) ? (it.area[0].area_name || it.area[0].name) : undefined,
+          email: emailMap.get(code) || it.email // Merge Local Email
         };
 
         if (!map.has(code)) map.set(code, fullObj);
@@ -1405,6 +1432,28 @@ export const updateEmployee = async (id: string | number, data: any): Promise<vo
       if (err.first_name) throw new Error(`الاسم الأول: ${err.first_name}`);
     } catch (e) { }
     throw new Error(`فشل تحديث بيانات الموظف: ${response.status} - ${t}`);
+  }
+
+
+  // 2. Sidecar Update: Email (Local PHP)
+  if (data.email) {
+    try {
+      let url = '/biometric_api/api/users.php';
+      if (Capacitor.isNativePlatform()) url = 'https://qssun.solar/api/api/users.php';
+
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: id,
+          email: data.email,
+          name: data.first_name // Optional
+        })
+      });
+    } catch (e) {
+      console.warn('Failed to update email locally', e);
+      // We do strictly fail here, as the main update succeeded
+    }
   }
 };
 

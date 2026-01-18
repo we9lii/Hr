@@ -30,6 +30,7 @@ $tables = [
         card_number VARCHAR(50),
         password VARCHAR(50),
         device_sn VARCHAR(50),
+        email VARCHAR(150),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_user (user_id, device_sn)
     )",
