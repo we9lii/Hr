@@ -504,7 +504,7 @@ export const fetchBridgeLogsRange = async (
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
   const gte = fmt(effectiveStartDate); // Use Clamped Date
-  const lte = fmt(endDate);
+  const lte = `${fmt(endDate)} 23:59:59`; // Cover Full Day
   const startTimeMs = effectiveStartDate.getTime();
 
   let allLogs: any[] = [];
