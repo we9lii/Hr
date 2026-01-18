@@ -73,15 +73,17 @@ try {
     $terminal_sn = $_GET['terminal_sn'] ?? ($_GET['device_sn'] ?? '');
 
     // Build Query
-    // Join with biometric_users to get real names
-    $sql = "SELECT l.*, u.name as real_name 
+    // Join with biometric_users to get real names AND Card Number (as generic ID map)
+    $sql = "SELECT l.*, u.name as real_name, u.card_number 
             FROM attendance_logs l 
             LEFT JOIN biometric_users u ON l.user_id = u.user_id 
             WHERE l.check_time >= ? AND l.check_time <= ?";
     $params = [$start_date, $end_date];
 
     if (!empty($emp_code) && $emp_code !== 'ALL') {
-        $sql .= " AND l.user_id = ?";
+        // If searching for specific employee code, check BOTH user_id OR card_number
+        $sql .= " AND (l.user_id = ? OR u.card_number = ?)";
+        $params[] = $emp_code;
         $params[] = $emp_code;
     }
 
@@ -118,9 +120,13 @@ try {
 
     $results = [];
     foreach ($rows as $row) {
+        // ID Logic: Use Card Number as 'emp_code' if present, because ZKTeco user_id might be National ID.
+        // This allows user to fix ID mismatch by editing Card Number on device.
+        $finalCode = (!empty($row['card_number'])) ? $row['card_number'] : $row['user_id'];
+
         $results[] = [
             'id' => $row['id'],
-            'emp_code' => $row['user_id'],
+            'emp_code' => $finalCode,
             // Use real name if found, else fallback
             'emp_name' => $row['real_name'] ? $row['real_name'] : ("User " . $row['user_id']),
             'punch_time' => $row['check_time'], // ADDED MISSING PUNCH_TIME
