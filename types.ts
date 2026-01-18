@@ -24,6 +24,8 @@ export interface Employee {
   department: string;
   position: string;
   avatarUrl?: string;
+  national_id?: string;
+  card_number?: string;
 }
 
 export interface LocationConfig {

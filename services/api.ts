@@ -526,6 +526,20 @@ export const fetchBridgeLogsRange = async (
     } catch { return []; }
   };
 
+  // Global Normalization Map
+  // We need to map Alien IDs (National ID) to System IDs (Emp Code) for ALL employees
+  let idMap = new Map<string, string>();
+  try {
+    const emps = await fetchAllEmployees();
+    emps.forEach(e => {
+      // Map National ID -> Code
+      if (e.national_id) idMap.set(String(e.national_id), String(e.code));
+      if (e.ssn) idMap.set(String(e.ssn), String(e.code));
+      if (e.identity_num) idMap.set(String(e.identity_num), String(e.code));
+      if (e.other_id) idMap.set(String(e.other_id), String(e.code));
+    });
+  } catch { }
+
   let keepGoing = true;
   for (let batch = 0; batch < 10; batch++) {
     if (!keepGoing) break;
@@ -538,7 +552,21 @@ export const fetchBridgeLogsRange = async (
       if (list.length === 0) { keepGoing = false; break; }
 
       // Transform and Stream immediately
-      const chunk = list.map(item => transformLog(item, effectiveStartDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+      const chunk = list.map(item => {
+        // Universal ID Normalization
+        // Check if this item's ID or UserID matches any known National ID in the map
+        const rawId = String(item.emp_code || item.user_id);
+        if (idMap.has(rawId)) {
+          item.emp_code = idMap.get(rawId);
+          item.user_id = idMap.get(rawId); // Normalize both
+        }
+
+        // Fallback: If specific employee requested (Legacy fix)
+        if (altCode && employeeId && (String(item.emp_code) === String(altCode) || String(item.user_id) === String(altCode))) {
+          item.emp_code = employeeId;
+        }
+        return transformLog(item, effectiveStartDate, endDate);
+      }).filter((x): x is AttendanceRecord => x !== null);
       if (chunk.length > 0) {
         allLogs = [...allLogs, ...chunk]; // Keep local copy for final return (legacy)
         if (onChunk) onChunk(chunk); // Stream out
