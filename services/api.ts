@@ -377,7 +377,8 @@ export const loginUser = async (username: string, password?: string): Promise<Us
 
     // Verify Employee Exists
     const headers = await getHeaders();
-    const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${username}&page_size=1`, {
+    // Use correct PHP path for verify: https://qssun.solar/iclock/transactions.php
+    const response = await fetch(`${SECURITY_API_URL}/iclock/transactions.php?emp_code=${username}&page_size=1`, {
       method: 'GET',
       headers
     });
@@ -1513,7 +1514,7 @@ export const registerMobilePunch = async (
 
   // Force Full URL for Native App OR Localhost Dev
   if (Capacitor.isNativePlatform() || window.location.hostname === 'localhost') {
-    path = 'https://qssun.solar/api/iclock/transactions.php';
+    path = 'https://qssun.solar/iclock/transactions.php';
   }
 
   try {

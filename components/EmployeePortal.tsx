@@ -137,11 +137,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
     // Remote Allowed: Allow if allowRemote is true
     if (!isDev && !allowRemote && (!location || !nearestLocation?.allowed)) return;
 
-    // Dev Force Branch Prompt
-    if (isDev && !nearestLocation?.allowed && !selectedBranch) {
-      alert("يا فيصل، اختر الفرع عشان نقدر نمشيك 😉");
-      return;
-    }
+
 
     setLoading(true);
 
