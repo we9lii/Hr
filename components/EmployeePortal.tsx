@@ -30,9 +30,13 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 type PunchType = 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN';
 
 const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkMode, toggleTheme }) => {
+  // Feature Flag: Enable Remote Punch for specific users or all
+  const allowRemote = true;
+
   const [currentTime, setCurrentTime] = useState(new Date());
   const [location, setLocation] = useState<{ lat: number, lng: number, accuracy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [scanText, setScanText] = useState(''); // Security Animation Text
   const [bioLoading, setBioLoading] = useState(false);
@@ -130,7 +134,8 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
 
   const handleAttendance = async () => {
     // Dev Bypass: Allow if isDev, regardless of location
-    if (!isDev && (!location || !nearestLocation?.allowed)) return;
+    // Remote Allowed: Allow if allowRemote is true
+    if (!isDev && !allowRemote && (!location || !nearestLocation?.allowed)) return;
 
     // Dev Force Branch Prompt
     if (isDev && !nearestLocation?.allowed && !selectedBranch) {
@@ -289,15 +294,21 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
               ? 'bg-red-900/20 text-red-400 border-red-900/30'
               : nearestLocation?.allowed
                 ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/30 ring-4 ring-emerald-900/10'
-                : 'bg-amber-900/20 text-amber-400 border-amber-900/30'}
+                : allowRemote
+                  ? 'bg-blue-900/20 text-blue-400 border-blue-900/30 ring-4 ring-blue-900/10' // Remote Allowed Style
+                  : 'bg-amber-900/20 text-amber-400 border-amber-900/30'}
                 `}>
             {error ? (
               <div className="flex items-center gap-2 font-bold"><AlertTriangle size={18} className="animate-bounce" /> {error}</div>
             ) : nearestLocation ? (
               <>
                 <div className="flex items-center gap-2 font-bold text-sm">
-                  {nearestLocation.allowed ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
-                  {nearestLocation.allowed ? `موقع آمن: ${nearestLocation.name}` : `أنت خارج نطاق العمل (${nearestLocation.name})`}
+                  {nearestLocation.allowed ? <ShieldCheck size={18} /> : allowRemote ? <MapPin size={18} /> : <ShieldAlert size={18} />}
+                  {nearestLocation.allowed
+                    ? `موقع آمن: ${nearestLocation.name}`
+                    : allowRemote
+                      ? `تسجيل عن بعد (خارج النطاق: ${nearestLocation.name})`
+                      : `أنت خارج نطاق العمل (${nearestLocation.name})`}
                 </div>
 
                 {/* Accuracy Meter Visual */}
@@ -397,10 +408,10 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
 
             <button
               onClick={handleAttendance}
-              disabled={loading || (!isDev && (!location || !nearestLocation?.allowed))}
+              disabled={loading || (!isDev && !allowRemote && (!location || !nearestLocation?.allowed))}
               className={`
                             w-52 h-52 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all duration-500 transform relative z-10 border-8 border-slate-800
-                            ${!isDev && (!location || !nearestLocation?.allowed) ? 'bg-slate-800 grayscale cursor-not-allowed shadow-inner opacity-80' : 'hover:scale-105 active:scale-95 cursor-pointer'}
+                            ${!isDev && !allowRemote && (!location || !nearestLocation?.allowed) ? 'bg-slate-800 grayscale cursor-not-allowed shadow-inner opacity-80' : 'hover:scale-105 active:scale-95 cursor-pointer'}
                             bg-gradient-to-br ${currentPunch.color}
                             ${currentPunch.shadow}
                         `}

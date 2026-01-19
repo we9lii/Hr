@@ -334,7 +334,10 @@ export const loginUser = async (username: string, password?: string): Promise<Us
     }
 
     // 3. Device Binding Check (Security Layer)
-    if (Capacitor.isNativePlatform()) {
+    // BYPASS FOR DEVELOPER (Faisal)
+    const isDev = username === '1093394672' || username === 'Faisal ALnutayfi';
+
+    if (Capacitor.isNativePlatform() && !isDev) {
       try {
         const deviceId = await Device.getId();
         // Capacitor v5+ uses 'identifier', older used 'uuid'
@@ -373,6 +376,18 @@ export const loginUser = async (username: string, password?: string): Promise<Us
     }
 
     // Verify Employee Exists
+    // BYPASS NETWORK VERIFICATION FOR DEVELOPER (Avoid CORS on localhost)
+    if (isDev) {
+      return {
+        id: username,
+        name: 'Faisal ALnutayfi (Dev)',
+        role: 'EMPLOYEE',
+        department: 'Development',
+        position: 'Developer',
+        avatar: 'https://ui-avatars.com/api/?name=F+A&background=random'
+      };
+    }
+
     const headers = await getHeaders();
     const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${username}&page_size=1`, {
       method: 'GET',
@@ -1494,4 +1509,44 @@ export const fetchPositions = async () => {
   if (!response.ok) throw new Error("Failed to fetch positions");
   const raw = await response.json();
   return Array.isArray(raw) ? raw : raw.data || raw.results || [];
+};
+// Mobile GPS Attendance
+export const registerMobilePunch = async (
+  empCode: string,
+  punchState: 'CHECK_IN' | 'CHECK_OUT',
+  timestamp: string,
+  latitude?: number,
+  longitude?: number,
+  imageProof?: string,
+  areaAlias?: string
+): Promise<{ status: 'success' | 'error'; message: string }> => {
+  const stateCode = punchState === 'CHECK_IN' ? 0 : 1;
+  let path = '/biometric_api/iclock/transactions.php';
+
+  // Force Full URL for Native App OR Localhost Dev
+  if (Capacitor.isNativePlatform() || window.location.hostname === 'localhost') {
+    path = 'https://qssun.solar/api/iclock/transactions.php';
+  }
+
+  try {
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        emp_code: empCode,
+        punch_time: timestamp,
+        punch_state: stateCode,
+        area_alias: areaAlias || 'Mobile Punch',
+        latitude: latitude,
+        longitude: longitude,
+        image_proof: imageProof
+      })
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error("Mobile Punch Error:", error);
+    return { status: 'error', message: 'Network Error' };
+  }
 };

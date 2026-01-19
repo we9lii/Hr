@@ -10,12 +10,12 @@ import LocationManager from './components/LocationManager';
 import Reports from './components/Reports';
 import { AttendanceRecord, DashboardStats, User, UserRole, LocationConfig, Device } from './types';
 import { getStats } from './services/api';
-import { Clock, CheckCircle, XCircle, RefreshCw, Users as UsersIcon, Sparkles, WifiOff, AlertTriangle, ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { MapPin, Clock, CheckCircle, XCircle, RefreshCw, Users as UsersIcon, Sparkles, WifiOff, AlertTriangle, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import ModernDashboard from './components/ModernDashboard';
-import DeviceManager from './components/DeviceManager';
-import Employees from './components/Employees';
+
 
 const App: React.FC = () => {
+
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -173,8 +173,9 @@ const App: React.FC = () => {
       const user = await loginUser(username, password);
 
       // RESTRICTION: Employees can only login via Native App (Android/iOS)
-      // Exception for Developer/Admin Account specific exemptions if needed
-      if (user.role === 'EMPLOYEE' && !Capacitor.isNativePlatform() && user.name !== 'Faisal ALnutayfi') {
+      // Exception for Developer (Faisal) by Name or ID
+      const isDev = user.name === 'Faisal ALnutayfi' || user.id === '1093394672' || user.name.includes('Faisal');
+      if (user.role === 'EMPLOYEE' && !Capacitor.isNativePlatform() && !isDev) {
         throw new Error("يرجى الدخول عن طريق التطبيق ، في حال عدم توفر التطبيق يرجى تواصل مع الدعم للحصول على نسختك");
       }
 

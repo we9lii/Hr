@@ -2150,7 +2150,23 @@ const Reports: React.FC<ReportsProps> = ({ logs, devices = [] }) => {
                                 }
 
                                 // Default Display
-                                return displayAddr || '-';
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <span className="truncate">{displayAddr || '-'}</span>
+                                    {log.location?.lat && log.location?.lng && (
+                                      <a
+                                        href={`https://www.google.com/maps?q=${log.location.lat},${log.location.lng}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-emerald-400 hover:text-emerald-300 bg-emerald-900/20 p-1 rounded transition-colors flex-shrink-0"
+                                        title="عرض الموقع على الخريطة"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MapPin size={12} />
+                                      </a>
+                                    )}
+                                  </div>
+                                );
                               })()}
                             </div>
                           )}

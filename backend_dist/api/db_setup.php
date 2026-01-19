@@ -91,5 +91,28 @@ try {
     }
 }
 
+// Mobile GPS & Proof Columns
+$gpsSql = [
+    "ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8)",
+    "ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8)",
+    "ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS image_proof VARCHAR(255)"
+];
+
+foreach ($gpsSql as $sql) {
+    try {
+        $pdo->exec($sql);
+        echo "Executed: " . htmlspecialchars($sql) . "<br>";
+    } catch (Exception $e) {
+        // Fallback for older MySQL (No IF NOT EXISTS in ALTER)
+        $cleanSql = str_replace("IF NOT EXISTS", "", $sql);
+        try {
+            $pdo->exec($cleanSql);
+            echo "Executed (Fallback): " . htmlspecialchars($cleanSql) . "<br>";
+        } catch (Exception $ex) {
+            echo "Info: Column likely exists (" . $ex->getMessage() . ")<br>";
+        }
+    }
+}
+
 echo "Database Setup Complete.";
 ?>

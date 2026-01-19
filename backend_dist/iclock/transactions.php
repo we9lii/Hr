@@ -44,9 +44,9 @@ try {
 
         // Insert into attendance_logs
         $stmt = $pdo->prepare("INSERT INTO attendance_logs 
-            (device_sn, user_id, check_time, status, verify_mode, notes, created_at) 
-            VALUES (:device_sn, :user_id, :check_time, :status, :verify_mode, :notes, NOW())
-            ON DUPLICATE KEY UPDATE notes = VALUES(notes), verify_mode = VALUES(verify_mode)");
+            (device_sn, user_id, check_time, status, verify_mode, notes, latitude, longitude, image_proof, created_at) 
+            VALUES (:device_sn, :user_id, :check_time, :status, :verify_mode, :notes, :latitude, :longitude, :image_proof, NOW())
+            ON DUPLICATE KEY UPDATE notes = VALUES(notes), verify_mode = VALUES(verify_mode), latitude=VALUES(latitude), longitude=VALUES(longitude), image_proof=VALUES(image_proof)");
 
         $stmt->execute([
             ':device_sn' => 'MANUAL',
@@ -54,7 +54,10 @@ try {
             ':check_time' => $data['punch_time'],
             ':status' => $data['punch_state'], // 0=CheckIn, 1=CheckOut
             ':verify_mode' => 15, // Manual
-            ':notes' => $data['area_alias'] ?? '' // Using area_alias as notes container
+            ':notes' => $data['area_alias'] ?? '',
+            ':latitude' => $data['latitude'] ?? null,
+            ':longitude' => $data['longitude'] ?? null,
+            ':image_proof' => $data['image_proof'] ?? null
         ]);
 
         echo json_encode(['status' => 'success', 'message' => 'Manual log created']);
