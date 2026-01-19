@@ -376,9 +376,9 @@ export const loginUser = async (username: string, password?: string): Promise<Us
     }
 
     // Verify Employee Exists
-    const headers = await getHeaders();
-    // Use correct PHP path for verify: https://qssun.solar/iclock/transactions.php
-    const response = await fetch(`${SECURITY_API_URL}/iclock/transactions.php?emp_code=${username}&page_size=1`, {
+    const headers = await getLegacyAuthHeaders();
+    // Revert to Legacy API for Reliable Login (since PHP file on new server might be missing/broken)
+    const response = await fetchLegacyProxy(`/personnel/api/employees/?emp_code=${username}&page_size=1`, {
       method: 'GET',
       headers
     });
@@ -676,10 +676,13 @@ const transformLog = (item: any, startDate: Date, endDate: Date): AttendanceReco
     type: parsePunchState(item.punch_state),
     method: (item.verify_type_display === 'Manual' || item.terminal_sn === 'MANUAL') ? AttendanceMethod.MANUAL :
       (item.verify_type_display === 'Face' || (item.verify_mode && item.verify_mode == 15)) ? AttendanceMethod.FACE :
-        AttendanceMethod.FINGERPRINT, // Simplified fallback
+        (item.terminal_sn === 'Mobile' || (item.verify_mode && item.verify_mode == 200)) ? AttendanceMethod.GPS :
+          AttendanceMethod.FINGERPRINT, // Simplified fallback
     status: isLate ? 'LATE' : 'ON_TIME',
     location: {
-      lat: 0, lng: 0, accuracy: 0,
+      lat: item.latitude ? parseFloat(item.latitude) : 0,
+      lng: item.longitude ? parseFloat(item.longitude) : 0,
+      accuracy: 0,
       address: item.area_alias || item.terminal_alias || 'Main Branch'
     },
     deviceSn: item.terminal_sn || undefined,

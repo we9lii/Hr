@@ -49,11 +49,11 @@ try {
             ON DUPLICATE KEY UPDATE notes = VALUES(notes), verify_mode = VALUES(verify_mode), latitude=VALUES(latitude), longitude=VALUES(longitude), image_proof=VALUES(image_proof)");
 
         $stmt->execute([
-            ':device_sn' => 'MANUAL',
+            ':device_sn' => 'Mobile',
             ':user_id' => $data['emp_code'],
             ':check_time' => $data['punch_time'],
             ':status' => $data['punch_state'], // 0=CheckIn, 1=CheckOut
-            ':verify_mode' => 15, // Manual
+            ':verify_mode' => 200, // Mobile/GPS
             ':notes' => $data['area_alias'] ?? '',
             ':latitude' => $data['latitude'] ?? null,
             ':longitude' => $data['longitude'] ?? null,
@@ -150,7 +150,11 @@ try {
             'verify_type_display' => ($row['device_sn'] === 'MANUAL' ? 'Manual' : ($row['verify_mode'] == 1 ? 'Finger' : ($row['verify_mode'] == 15 ? 'Face' : 'Other'))),
             'terminal_sn' => $row['device_sn'],
             'terminal_alias' => $row['notes'] ? $row['notes'] : $row['device_sn'], // Show Notes in Alias field
-            'area_alias' => $row['notes'] ? $row['notes'] : 'الفرع الرئيسي'
+            'area_alias' => $row['notes'] ? $row['notes'] : 'الفرع الرئيسي',
+            // GPS Data (Critical for Map Pin)
+            'latitude' => $row['latitude'],
+            'longitude' => $row['longitude'],
+            'image_proof' => $row['image_proof']
         ];
     }
 

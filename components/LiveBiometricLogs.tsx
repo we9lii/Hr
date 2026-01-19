@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Clock, CheckCircle, Wifi, Users, AlertTriangle, WifiOff, RefreshCw, UserPlus } from 'lucide-react';
+import { Clock, CheckCircle, Wifi, Users, AlertTriangle, WifiOff, RefreshCw, UserPlus, MapPin, Smartphone } from 'lucide-react';
 import { API_CONFIG, fetchAttendanceLogsRange } from '../services/api';
 import { AttendanceRecord } from '../types';
 import { getDeviceConfig } from '../config/shifts';
@@ -228,10 +228,22 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                                                     <span className="text-[10px] opacity-60 flex items-center gap-1"><Users size={10} /> بواسطة المسؤول</span>
                                                 </div>
                                             ) : (
-                                                <div className="flex flex-col gap-1">
                                                     <span className="text-white font-bold flex items-center gap-1.5">
                                                         {log.deviceSn?.includes('Mobile') || log.deviceAlias?.includes('تطبيق') ? <Smartphone size={14} className="text-blue-400" /> : <Wifi size={14} className="text-purple-400" />}
                                                         {getDeviceConfig({ sn: log.deviceSn || '', alias: log.deviceAlias }).alias}
+                                                        
+                                                        {/* GPS Map Pin */}
+                                                        {log.location && log.location.lat !== 0 && (
+                                                            <a 
+                                                                href={`https://www.google.com/maps?q=${log.location.lat},${log.location.lng}`} 
+                                                                target="_blank" 
+                                                                rel="noreferrer"
+                                                                className="p-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-full transition-colors ml-1"
+                                                                title="عرض الموقع على الخريطة"
+                                                            >
+                                                                <MapPin size={12} />
+                                                            </a>
+                                                        )}
                                                     </span>
                                                     <span className="text-[10px] font-mono opacity-50 bg-black/20 w-fit px-1.5 rounded">{log.deviceSn}</span>
                                                 </div>
@@ -247,34 +259,34 @@ const LiveBiometricLogs: React.FC<LiveBiometricLogsProps> = ({ employees, settin
                                             )}
                                         </td>
                                     </tr>
-                                )
+                        )
                             })}
-                            {logs.length === 0 && !loading && (
-                                <tr>
-                                    <td colSpan={6} className="p-24 text-center">
-                                        <div className="flex flex-col items-center justify-center">
-                                            <div className="w-24 h-24 bg-slate-800/50 rounded-full flex items-center justify-center mb-6 text-slate-600 ring-1 ring-slate-700/50">
-                                                <WifiOff size={40} strokeWidth={1.5} />
-                                            </div>
-                                            <h3 className="text-xl font-bold text-slate-300 mb-2">لا توجد حركات اليوم</h3>
-                                            <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed">
-                                                لم يتم تسجيل أي بصمات أو حركات دخول/خروج لهذا اليوم حتى الآن.
-                                            </p>
-                                            <button onClick={fetchData} className="mt-6 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold transition-all border border-slate-700 shadow-lg active:scale-95 flex items-center gap-2">
-                                                <RefreshCw size={16} />
-                                                تحديث البيانات
-                                            </button>
+                        {logs.length === 0 && !loading && (
+                            <tr>
+                                <td colSpan={6} className="p-24 text-center">
+                                    <div className="flex flex-col items-center justify-center">
+                                        <div className="w-24 h-24 bg-slate-800/50 rounded-full flex items-center justify-center mb-6 text-slate-600 ring-1 ring-slate-700/50">
+                                            <WifiOff size={40} strokeWidth={1.5} />
                                         </div>
-                                    </td>
+                                        <h3 className="text-xl font-bold text-slate-300 mb-2">لا توجد حركات اليوم</h3>
+                                        <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed">
+                                            لم يتم تسجيل أي بصمات أو حركات دخول/خروج لهذا اليوم حتى الآن.
+                                        </p>
+                                        <button onClick={fetchData} className="mt-6 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold transition-all border border-slate-700 shadow-lg active:scale-95 flex items-center gap-2">
+                                            <RefreshCw size={16} />
+                                            تحديث البيانات
+                                        </button>
+                                    </div>
+                                </td>
 
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
             </div>
-
         </div>
+
+        </div >
     );
 };
 
