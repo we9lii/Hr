@@ -43,24 +43,44 @@ try {
         // Insert into attendance_logs... (Keep existing insert logic)
 
         // Insert into attendance_logs
+        // DEBUGGING: Log the attempt
+        file_put_contents('gps_debug_log.txt', date('Y-m-d H:i:s') . " - Received: " . json_encode($data) . "\n", FILE_APPEND);
+
         $stmt = $pdo->prepare("INSERT INTO attendance_logs 
             (device_sn, user_id, check_time, status, verify_mode, notes, latitude, longitude, image_proof, created_at) 
             VALUES (:device_sn, :user_id, :check_time, :status, :verify_mode, :notes, :latitude, :longitude, :image_proof, NOW())
             ON DUPLICATE KEY UPDATE notes = VALUES(notes), verify_mode = VALUES(verify_mode), latitude=VALUES(latitude), longitude=VALUES(longitude), image_proof=VALUES(image_proof)");
 
+        // Logic for Remote vs Local Punches
+        $isRemote = $data['is_remote'] ?? false;
+
+        // IF Remote: Masquerade as Physical Device (AF4C...) with GPS Mode (200)
+        // IF Local: Use 'MANUAL' label with Manual Mode (15) to mimic BioTime manual log
+        $deviceSn = $isRemote ? 'AF4C232560143' : 'MANUAL';
+        $verifyMode = $isRemote ? 200 : 15; // 200 = GPS Pin, 15 = Standard Manual
+
         $stmt->execute([
-            ':device_sn' => 'Mobile',
+            ':device_sn' => $deviceSn,
             ':user_id' => $data['emp_code'],
             ':check_time' => $data['punch_time'],
             ':status' => $data['punch_state'], // 0=CheckIn, 1=CheckOut
-            ':verify_mode' => 200, // Mobile/GPS
+            ':verify_mode' => $verifyMode,
             ':notes' => $data['area_alias'] ?? '',
             ':latitude' => $data['latitude'] ?? null,
             ':longitude' => $data['longitude'] ?? null,
             ':image_proof' => $data['image_proof'] ?? null
         ]);
 
-        echo json_encode(['status' => 'success', 'message' => 'Manual log created']);
+        $rows = $stmt->rowCount();
+        file_put_contents('gps_debug_log.txt', date('Y-m-d H:i:s') . " - Inserted Rows: " . $rows . " (ID: " . $pdo->lastInsertId() . ")\n", FILE_APPEND);
+
+        if ($rows > 0 || $pdo->lastInsertId()) {
+            $msg = "Attendance recorded (GPS: " . ($data['latitude'] ?? 'NULL') . ", " . ($data['longitude'] ?? 'NULL') . ")";
+            echo json_encode(['status' => 'success', 'message' => $msg]);
+        } else {
+            // Check if it was a duplicate update
+            echo json_encode(['status' => 'success', 'message' => 'Attendance updated (Duplicate)']);
+        }
         exit;
     }
 

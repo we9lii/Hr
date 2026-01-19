@@ -14,6 +14,7 @@ import { MapPin, Clock, CheckCircle, XCircle, RefreshCw, Users as UsersIcon, Spa
 import ModernDashboard from './components/ModernDashboard';
 import Employees from './components/Employees';
 import DeviceManager from './components/DeviceManager';
+import MobilePunch from './components/MobilePunch'; // New GPS Component
 
 
 const App: React.FC = () => {
@@ -686,6 +687,10 @@ const App: React.FC = () => {
               <DeviceManager onDevicesUpdated={setDevices} />
             )}
 
+
+            {activeTab === 'mobile_punch' && currentUser && (
+              <MobilePunch currentUser={currentUser} locations={locations} />
+            )}
 
             {activeTab === 'locations' && <LocationManager />}
 

@@ -1510,7 +1510,8 @@ export const registerMobilePunch = async (
   latitude?: number,
   longitude?: number,
   imageProof?: string,
-  areaAlias?: string
+  areaAlias?: string,
+  isRemote?: boolean
 ): Promise<{ status: 'success' | 'error'; message: string }> => {
   const stateCode = punchState === 'CHECK_IN' ? 0 : 1;
   let path = '/biometric_api/iclock/transactions.php';
@@ -1531,7 +1532,8 @@ export const registerMobilePunch = async (
         area_alias: areaAlias || 'Mobile Punch',
         latitude: latitude,
         longitude: longitude,
-        image_proof: imageProof
+        image_proof: imageProof,
+        is_remote: isRemote // Send flag to backend
       })
     });
 
