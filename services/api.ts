@@ -376,18 +376,6 @@ export const loginUser = async (username: string, password?: string): Promise<Us
     }
 
     // Verify Employee Exists
-    // BYPASS NETWORK VERIFICATION FOR DEVELOPER (Avoid CORS on localhost)
-    if (isDev) {
-      return {
-        id: username,
-        name: 'Faisal ALnutayfi (Dev)',
-        role: 'EMPLOYEE',
-        department: 'Development',
-        position: 'Developer',
-        avatar: 'https://ui-avatars.com/api/?name=F+A&background=random'
-      };
-    }
-
     const headers = await getHeaders();
     const response = await fetch(`${API_CONFIG.baseUrl}/transactions/?emp_code=${username}&page_size=1`, {
       method: 'GET',
