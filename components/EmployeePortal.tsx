@@ -160,44 +160,39 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
       const acc = location ? location.accuracy : undefined;
 
       const isInside = nearestLocation && nearestLocation.allowed;
-      const isFaisal = user.id === '1093394672';
 
-      // 1. If Inside Geofence: Use Standard BioTime (As Before)
-      if (isInside) {
-        const terminalSn = 'MOBILE_APP_INSIDE'; // Marker for inside punches
-        // @ts-ignore
-        await submitBiometricAttendance(user.id, selectedType, terminalSn, 'MOBILE');
-        setLastPunchType(selectedType);
-        setLastPunchLocation(nearestLocation?.name || 'موقع آمن');
-      }
+      // UNIFIED LOGIC: Use submitGPSAttendance for EVERYTHING (Reliable Backend)
+      // I have updated transactions.php to write directly to BioTime's native table for Inside punches.
+      // This bypasses the broken API (500 Error) while ensuring data appears in the Main Dashboard.
 
-      // 2. If Outside Geofence: Use Custom GPS Database (For Coordinates)
-      else {
-        // Pass selectedBranch if Dev Mode active logic
-        const isRemotePunch = allowRemote && !isInside;
-        const response = await submitGPSAttendance(user.id, lat, lng, selectedType, selectedBranch || undefined, acc, isRemotePunch);
-        if (typeof response === 'object' && response.area) {
-          setLastPunchLocation(response.area);
-        }
+      const isInsidePunch = isInside;
+      const terminalSn = isInsidePunch ? 'MOBILE_APP_INSIDE' : undefined;
+      const isRemotePunch = allowRemote && !isInsidePunch; // Only remote if NOT inside
 
-        // 3. SPECIAL CASE FOR FAISAL: If Outside, ALSO send to BioTime (Double-Post)
-        if (isFaisal) {
-          try {
-            // @ts-ignore
-            await submitBiometricAttendance(user.id, selectedType, 'MOBILE_GPS_REMOTE', 'MOBILE');
-            console.log("Faisal Double-Post to BioTime Success");
-          } catch (err) {
-            console.warn("Faisal Double-Post Failed", err);
-            // Don't fail the whole action if just the backup fails
-          }
-        }
+      // Execute Pulse (Single Call for All)
+      const response = await submitGPSAttendance(
+        user.id,
+        lat,
+        lng,
+        selectedType,
+        selectedBranch || undefined,
+        acc,
+        isRemotePunch,
+        terminalSn
+      );
+
+      // Update last punch location
+      if (typeof response === 'object' && response.area) {
+        setLastPunchLocation(response.area);
+      } else {
+        setLastPunchLocation(isInsidePunch ? (nearestLocation?.name || 'موقع آمن') : 'Unknown');
       }
 
       const now = new Date();
       setLastPunch(now);
       setLastPunchType(selectedType);
 
-      // Auto-switch logic for immediate feedback
+      // Auto-switch logic
       if (selectedType === 'CHECK_IN') setSelectedType('CHECK_OUT');
       else if (selectedType === 'BREAK_OUT') setSelectedType('BREAK_IN');
       else if (selectedType === 'BREAK_IN') setSelectedType('CHECK_OUT');

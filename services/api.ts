@@ -281,6 +281,8 @@ export const fetchLegacyProxy = async (path: string, options: RequestInit = {}) 
       localPath = '/legacy_auth' + path;
     } else if (path.startsWith('/personnel')) {
       localPath = path.replace('/personnel', '/legacy_personnel');
+    } else if (path.startsWith('/att')) {
+      localPath = path.replace('/att', '/legacy_att');
     }
 
     console.log(`[Proxy] Web Detected. Fetching Proxy Path: ${localPath}`);
@@ -901,45 +903,32 @@ const formatDateADMS = (date: Date) => {
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
-
 export const submitGPSAttendance = async (
   employeeId: string,
   lat: number,
   lng: number,
-  type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN',
-  manualArea?: string,
+  type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_IN' | 'BREAK_OUT',
+  areaAlias?: string,
   accuracy?: number,
-  isRemote?: boolean // Added Flag
-): Promise<{ success: boolean; area?: string }> => {
+  isRemote: boolean = false,
+  terminalSn?: string // ADDED: Optional terminal SN override
+) => {
   try {
-    const punchState = type === 'CHECK_IN' ? '0' :
-      type === 'CHECK_OUT' ? '1' :
-        type === 'BREAK_OUT' ? '2' : '3';
-
-    // Time Setup (Local Time)
-    const now = new Date();
-    const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString();
-    const punchTime = localIso.replace('T', ' ').split('.')[0];
-
-    // Determine Path (PROD vs DEV)
-    let path = '/biometric_api/iclock/transactions.php';
-    if (Capacitor.isNativePlatform() || window.location.hostname === 'localhost') {
-      // CORRECT PATH FOUND: public_html/api/iclock
-      path = 'https://qssun.solar/api/iclock/transactions.php';
-    }
-
-    // Payload for Custom PHP Backend
     const payload = {
       emp_code: employeeId,
-      punch_time: punchTime,
-      punch_state: punchState,
-      area_alias: manualArea || 'Mobile Punch',
       latitude: lat,
       longitude: lng,
+      punch_time: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      punch_state: type === 'CHECK_IN' ? '0' : (type === 'CHECK_OUT' ? '1' : '0'),
+      area_alias: areaAlias || '',
+      accuracy: accuracy || 0,
+      image_proof: 'scan_proof.jpg', // Placeholder
       is_remote: isRemote,
-      memo: accuracy ? `ACC:${Math.round(accuracy)}m` : 'ACC:N/A'
+      terminal_sn: terminalSn // Pass to PHP
     };
 
+    // CORRECT PATH: Custom PHP Backend (Unified)
+    const path = 'https://qssun.solar/api/iclock/transactions.php';
     console.log("Submitting GPS Punch:", payload, "to", path);
 
     const response = await fetch(path, {
@@ -970,7 +959,7 @@ export const submitGPSAttendance = async (
     console.log("Punch Result:", result);
 
     if (result.status === 'success' || (result.message && result.message.includes('Duplicate'))) {
-      return { success: true, area: manualArea || 'Mobile' };
+      return { success: true, area: areaAlias || 'Mobile' };
     } else {
       throw new Error(result.message || 'Unknown Error');
     }
@@ -1046,13 +1035,17 @@ export const submitBiometricAttendance = async (
     }
     const headers = await getHeaders();
     // Use Proxy Wrapper to handle Native vs Web (Localhost) URLs
-    const response = await fetchLegacyProxy('/personnel/api/transactions/', {
+    // CHANGED: /att/api/webpunches/ (Web Punch Endpoint - Referenced in code)
+    const response = await fetchLegacyProxy('/att/api/webpunches/', {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
     });
+
     if (!response.ok) {
-      throw new Error('Failed to submit biometric attendance');
+      const errorText = await response.text();
+      console.error("Biometric API Error:", response.status, errorText);
+      throw new Error(`Server Error (${response.status}): ${errorText.substring(0, 100)}`);
     }
     return true;
   } catch (error) {
@@ -1096,6 +1089,7 @@ export const submitManualAttendance = async (
   note?: string
 ): Promise<boolean> => {
   try {
+    // Format Date to MySQL DateTime (YYYY-MM-DD HH:MM:SS) - Local Time
     // Format Date to MySQL DateTime (YYYY-MM-DD HH:MM:SS) - Local Time
     const y = timestamp.getFullYear();
     const m = String(timestamp.getMonth() + 1).padStart(2, '0');

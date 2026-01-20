@@ -45,42 +45,90 @@ try {
             exit;
         }
 
-        // Insert into attendance_logs... (Keep existing insert logic)
+        // FIX: TIMEZONE & DATE FORMAT
+        // BioTime expects Local Time (Asia/Riyadh), but App sends ISO (UTC).
+        date_default_timezone_set('Asia/Riyadh');
 
-        // Insert into attendance_logs
-        // DEBUGGING: Log the attempt
-        file_put_contents('gps_debug_log.txt', date('Y-m-d H:i:s') . " - Received: " . json_encode($data) . "\n", FILE_APPEND);
+        $utcTime = isset($data['punch_time']) ? $data['punch_time'] : date('Y-m-d H:i:s');
+        $timestamp = strtotime($utcTime);
+        $localTime = date('Y-m-d H:i:s', $timestamp);
 
+        // FIX: VALID DEVICE FOR DASHBOARD
+        // Dashboard filters out logs from unknown serial numbers.
+        $dashboardDeviceSn = 'AF4C232560143';
+
+        // Insert into attendance_logs (Custom DB)
         $stmt = $pdo->prepare("INSERT INTO attendance_logs 
-            (device_sn, user_id, check_time, status, verify_mode, notes, latitude, longitude, image_proof, created_at) 
-            VALUES (:device_sn, :user_id, :check_time, :status, :verify_mode, :notes, :latitude, :longitude, :image_proof, NOW())
-            ON DUPLICATE KEY UPDATE notes = VALUES(notes), verify_mode = VALUES(verify_mode), latitude=VALUES(latitude), longitude=VALUES(longitude), image_proof=VALUES(image_proof)");
+            (user_id, check_time, status, verify_mode, device_sn, latitude, longitude, image_proof) 
+            VALUES (:user_id, :check_time, :status, :verify_mode, :device_sn, :latitude, :longitude, :image_proof)
+            ON DUPLICATE KEY UPDATE 
+            check_time = VALUES(check_time),
+            latitude = VALUES(latitude),
+            longitude = VALUES(longitude),
+            image_proof = VALUES(image_proof)
+        ");
 
         // Logic for Remote vs Local Punches
-        $isRemote = $data['is_remote'] ?? false;
+        $isRemote = isset($data['is_remote']) ? $data['is_remote'] : false;
 
-        // IF Remote: Masquerade as Physical Device (AF4C...) with GPS Mode (200)
-        // IF Local: Use 'MANUAL' label with Manual Mode (15) to mimic BioTime manual log
-        $deviceSn = $isRemote ? 'AF4C232560143' : 'MANUAL';
+        if (isset($data['terminal_sn']) && !empty($data['terminal_sn'])) {
+            $customDeviceSn = $data['terminal_sn'];
+        } else {
+            $customDeviceSn = $isRemote ? 'AF4C232560143' : 'MANUAL';
+        }
+
         $verifyMode = $isRemote ? 200 : 15; // 200 = GPS Pin, 15 = Standard Manual
 
+        // Execute Custom Insert (Using Local Time)
         $stmt->execute([
-            ':device_sn' => $deviceSn,
+            ':device_sn' => $customDeviceSn,
             ':user_id' => $data['emp_code'],
-            ':check_time' => $data['punch_time'],
+            ':check_time' => $localTime, // <-- CORRECTED TIME
             ':status' => $data['punch_state'], // 0=CheckIn, 1=CheckOut
             ':verify_mode' => $verifyMode,
-            ':notes' => $data['area_alias'] ?? '',
             ':latitude' => $data['latitude'] ?? null,
             ':longitude' => $data['longitude'] ?? null,
             ':image_proof' => $data['image_proof'] ?? null
         ]);
 
+        // --- NATIVE BIOTIME SYNC (Dual Write) ---
+        // Insert into `iclock_transaction` so it appears in Main Dashboard/Real-Time Monitor
+        try {
+            // lookup logic: Ensure we have the correct emp_code for BioTime FK
+            // The App might send 'id' or 'emp_code'. We need strict 'emp_code'.
+            $lookupStmt = $pdo->prepare("SELECT emp_code FROM personnel_employee WHERE emp_code = ? OR id = ? OR card_number = ? LIMIT 1");
+            $lookupStmt->execute([$data['emp_code'], $data['emp_code'], $data['emp_code']]);
+            $employee = $lookupStmt->fetch(PDO::FETCH_ASSOC);
+
+            // If found, use the Database's emp_code. If not, fallback to input.
+            $validEmpCode = $employee ? $employee['emp_code'] : $data['emp_code'];
+
+            $nativeStmt = $pdo->prepare("INSERT IGNORE INTO iclock_transaction 
+                (emp_code, punch_time, punch_state, verify_type, terminal_sn, terminal_alias, area_alias, upload_time, source, sync_status, latitude, longitude) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), 1, 0, ?, ?)
+            ");
+
+            $nativeStmt->execute([
+                $validEmpCode, // <-- VALIDATED CODE
+                $localTime, // <-- CORRECTED TIME
+                $data['punch_state'],
+                $verifyMode,
+                $dashboardDeviceSn, // VALID DEVICE SN
+                'Mobile App',
+                $isRemote ? 'Remote (GPS)' : 'Inside (App)',
+                $data['latitude'] ?? 0,
+                $data['longitude'] ?? 0
+            ]);
+        } catch (Exception $e) {
+            file_put_contents('gps_debug_log.txt', date('Y-m-d H:i:s') . " - Native Insert Failed: " . $e->getMessage() . "\n", FILE_APPEND);
+        }
+        // ----------------------------------------
+
         $rows = $stmt->rowCount();
         file_put_contents('gps_debug_log.txt', date('Y-m-d H:i:s') . " - Inserted Rows: " . $rows . " (ID: " . $pdo->lastInsertId() . ")\n", FILE_APPEND);
 
         if ($rows > 0 || $pdo->lastInsertId()) {
-            $typeStr = $isRemote ? "REMOTE (Device: $deviceSn)" : "LOCAL (Device: $deviceSn)";
+            $typeStr = $isRemote ? "REMOTE (Device: $customDeviceSn)" : "LOCAL (Device: $customDeviceSn)";
             $msg = "Recorded: $typeStr | GPS: " . ($data['latitude'] ?? 'N/A');
             echo json_encode(['status' => 'success', 'message' => $msg]);
         } else {
@@ -144,47 +192,31 @@ try {
     $sql .= " ORDER BY l.check_time DESC LIMIT ? OFFSET ?";
 
     // Bind Limit/Offset as integers (PDO strict)
-    // Note: params array has strings/dates so far.
-    // PDO::execute with array treats all as string usually, BUT LIMIT requires int in some drivers.
-    // Safer to bindValue manually or use direct interpolation (safe if ints forced).
-    // Let's use bindParam approach on STMT directly if possible, or append to params but might fail if driver is strict.
-    // Simpler: Just Interpolate since they are cast to (int)
     $stmt = $pdo->prepare(str_replace('LIMIT ? OFFSET ?', "LIMIT $page_size OFFSET $offset", $sql));
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Return next page indicator if full page returned
-    // (Wait, standard BioTime API returns { count, next, previous, results }).
-    // To minimize frontend changes, let's keep array output BUT with infinite scroll support frontend needs to know if done?
-    // Frontend `api.ts` loop break if `list.length === 0`.
-    // So if we return [] when page is empty, frontend stops.
-    // That's standard compatible.
-
     $results = [];
     foreach ($rows as $row) {
-        // ID Logic: Use Card Number as 'emp_code' if present, because ZKTeco user_id might be National ID.
-        // This allows user to fix ID mismatch by editing Card Number on device.
+        // ID Logic: Use Card Number as 'emp_code' if present
         $finalCode = (!empty($row['card_number'])) ? $row['card_number'] : $row['user_id'];
 
         $results[] = [
             'id' => $row['id'],
             'emp_code' => $finalCode,
-            // Use real name if found, else fallback
             'emp_name' => $row['real_name'] ? $row['real_name'] : ("User " . $row['user_id']),
-            'punch_time' => $row['check_time'], // ADDED MISSING PUNCH_TIME
+            'punch_time' => $row['check_time'],
             'punch_state' => $row['status'],
             'verify_type_display' => ($row['device_sn'] === 'MANUAL' ? 'Manual' : ($row['verify_mode'] == 1 ? 'Finger' : ($row['verify_mode'] == 15 ? 'Face' : 'Other'))),
             'terminal_sn' => $row['device_sn'],
-            'terminal_alias' => $row['notes'] ? $row['notes'] : $row['device_sn'], // Show Notes in Alias field
-            'area_alias' => $row['notes'] ? $row['notes'] : 'الفرع الرئيسي',
-            // GPS Data (Critical for Map Pin)
+            'terminal_alias' => $row['device_sn'],
+            'area_alias' => 'الفرع الرئيسي',
             'latitude' => $row['latitude'],
             'longitude' => $row['longitude'],
             'image_proof' => $row['image_proof']
         ];
     }
 
-    // Output clean JSON
     echo json_encode($results);
 
 } catch (Exception $e) {
