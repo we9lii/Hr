@@ -269,14 +269,11 @@ const ensureAuthToken = async (): Promise<string> => {
 export const fetchLegacyProxy = async (path: string, options: RequestInit = {}) => {
   if (Capacitor.isNativePlatform()) {
     // Native: Direct Fetch (HTTP is allowed)
-    // Localhost needs this to avoid CORS/Proxy issues with Legacy Server
     const url = `http://qssun.dyndns.org:8085${path}`;
+    console.log(`[Proxy] Native Detected. Fetching Direct: ${url}`);
     return fetch(url, options);
   } else {
-    // Web (Both Localhost & Production): Use Local/Server Proxy
-    // We map '/iclock' -> '/legacy_iclock' (Forwarded by Vite or Express)
-    // We map '/api-token-auth' -> '/legacy_auth/api-token-auth'
-
+    // Web (Both Localhost & Production)
     let localPath = path;
     if (path.startsWith('/iclock')) {
       localPath = path.replace('/iclock', '/legacy_iclock');
@@ -286,6 +283,7 @@ export const fetchLegacyProxy = async (path: string, options: RequestInit = {}) 
       localPath = path.replace('/personnel', '/legacy_personnel');
     }
 
+    console.log(`[Proxy] Web Detected. Fetching Proxy Path: ${localPath}`);
     // Fetch relative path so current domain handles it (Vite or Render)
     return fetch(localPath, options);
   }
