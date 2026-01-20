@@ -4,10 +4,15 @@ ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
 header("Content-Type: application/json; charset=UTF-8");
 
-
+// Handle Preflight OPTIONS request
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 try {
     require_once '../db_connect.php';
@@ -75,11 +80,12 @@ try {
         file_put_contents('gps_debug_log.txt', date('Y-m-d H:i:s') . " - Inserted Rows: " . $rows . " (ID: " . $pdo->lastInsertId() . ")\n", FILE_APPEND);
 
         if ($rows > 0 || $pdo->lastInsertId()) {
-            $msg = "Attendance recorded (GPS: " . ($data['latitude'] ?? 'NULL') . ", " . ($data['longitude'] ?? 'NULL') . ")";
+            $typeStr = $isRemote ? "REMOTE (Device: $deviceSn)" : "LOCAL (Device: $deviceSn)";
+            $msg = "Recorded: $typeStr | GPS: " . ($data['latitude'] ?? 'N/A');
             echo json_encode(['status' => 'success', 'message' => $msg]);
         } else {
             // Check if it was a duplicate update
-            echo json_encode(['status' => 'success', 'message' => 'Attendance updated (Duplicate)']);
+            echo json_encode(['status' => 'success', 'message' => 'Updated (Duplicate)']);
         }
         exit;
     }

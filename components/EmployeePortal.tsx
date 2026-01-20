@@ -31,7 +31,7 @@ type PunchType = 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN';
 
 const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkMode, toggleTheme }) => {
   // Feature Flag: Enable Remote Punch for specific users or all
-  const allowRemote = true;
+  const allowRemote = user.id === '1093394672';
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [location, setLocation] = useState<{ lat: number, lng: number, accuracy: number } | null>(null);
@@ -159,15 +159,43 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
       const lng = location ? location.lng : 0;
       const acc = location ? location.accuracy : undefined;
 
-      // Pass selectedBranch if Dev Mode active
-      const response = await submitGPSAttendance(user.id, lat, lng, selectedType, selectedBranch || undefined, acc);
+      const isInside = nearestLocation && nearestLocation.allowed;
+      const isFaisal = user.id === '1093394672';
+
+      // 1. If Inside Geofence: Use Standard BioTime (As Before)
+      if (isInside) {
+        const terminalSn = 'MOBILE_APP_INSIDE'; // Marker for inside punches
+        // @ts-ignore
+        await submitBiometricAttendance(user.id, selectedType, terminalSn, 'MOBILE');
+        setLastPunchType(selectedType);
+        setLastPunchLocation(nearestLocation?.name || 'موقع آمن');
+      }
+
+      // 2. If Outside Geofence: Use Custom GPS Database (For Coordinates)
+      else {
+        // Pass selectedBranch if Dev Mode active logic
+        const isRemotePunch = allowRemote && !isInside;
+        const response = await submitGPSAttendance(user.id, lat, lng, selectedType, selectedBranch || undefined, acc, isRemotePunch);
+        if (typeof response === 'object' && response.area) {
+          setLastPunchLocation(response.area);
+        }
+
+        // 3. SPECIAL CASE FOR FAISAL: If Outside, ALSO send to BioTime (Double-Post)
+        if (isFaisal) {
+          try {
+            // @ts-ignore
+            await submitBiometricAttendance(user.id, selectedType, 'MOBILE_GPS_REMOTE', 'MOBILE');
+            console.log("Faisal Double-Post to BioTime Success");
+          } catch (err) {
+            console.warn("Faisal Double-Post Failed", err);
+            // Don't fail the whole action if just the backup fails
+          }
+        }
+      }
 
       const now = new Date();
       setLastPunch(now);
       setLastPunchType(selectedType);
-      if (typeof response === 'object' && response.area) {
-        setLastPunchLocation(response.area);
-      }
 
       // Auto-switch logic for immediate feedback
       if (selectedType === 'CHECK_IN') setSelectedType('CHECK_OUT');
@@ -176,7 +204,8 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
       else if (selectedType === 'CHECK_OUT') setSelectedType('CHECK_IN');
 
     } catch (e) {
-      alert("حدث خطأ في الاتصال");
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`خطأ: ${msg}`);
     } finally {
       setLoading(false);
       setScanText('');
@@ -440,7 +469,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
                 <span className="absolute inset-0 rounded-full border border-white/30 animate-ping opacity-20 scale-110"></span>
               )}
             </button>
-            {!nearestLocation?.allowed && (
+            {!nearestLocation?.allowed && !allowRemote && (
               <p className="mt-4 text-xs font-bold text-red-500 animate-pulse">يجب أن تكون في الموقع للتحضير</p>
             )}
           </div>
@@ -472,7 +501,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
           )}
 
           <div className="mt-2 text-[10px] text-slate-300 dark:text-slate-600 font-mono">
-            System v2.1 • GPS • Biometric • Geofenced
+            System v2.1 • GPS (v9.0 REMOTE FIX) • Biometric
           </div>
         </div>
       </div>

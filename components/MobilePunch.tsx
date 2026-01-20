@@ -105,9 +105,12 @@ const MobilePunch: React.FC<MobilePunchProps> = ({ currentUser, locations }) => 
 
             {/* Header Info */}
             <div className="text-center space-y-2">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-500 bg-clip-text text-transparent">
-                    Mobile Attendance
-                </h1>
+                <h2 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+                    Remote Attendance (v8.0 FIX)
+                </h2>
+                <div className="bg-red-500 text-white px-2 py-1 text-xs font-bold rounded animate-pulse">
+                    BUILD VERIFICATION
+                </div>
                 <p className="text-gray-400">Recorded for: <span className="text-white font-mono">{currentUser.name || currentUser.username}</span></p>
             </div>
 
@@ -151,11 +154,23 @@ const MobilePunch: React.FC<MobilePunchProps> = ({ currentUser, locations }) => 
             </div>
 
             {/* Location Debug Info (Small) */}
-            {location && (
-                <div className="text-xs text-gray-500 font-mono">
-                    Lat: {location.lat.toFixed(6)} | Lng: {location.lng.toFixed(6)}
-                </div>
-            )}
+            {location && (() => {
+                let minArgs = { dist: 999999, name: 'None' };
+                locations.forEach(loc => {
+                    const d = calculateDistance(location.lat, location.lng, loc.lat, loc.lng);
+                    if (d < minArgs.dist) minArgs = { dist: d, name: loc.name };
+                });
+                const isInside = minArgs.dist <= 200; // Radius assumption
+                return (
+                    <div className="text-xs text-slate-400 font-mono mt-4 text-center dir-ltr">
+                        <div>Lat: {location.lat.toFixed(6)} | Lng: {location.lng.toFixed(6)}</div>
+                        <div className={`${isInside ? 'text-orange-400' : 'text-emerald-400'} font-bold mt-1`}>
+                            Nearest: {minArgs.name} ({Math.round(minArgs.dist)}m) <br />
+                            Status: {isInside ? 'INSIDE FENCE (Local)' : 'OUTSIDE FENCE (Remote)'}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Feedback Messages */}
             {error && (

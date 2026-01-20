@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import Layout from './components/Layout';
+import { LOCATIONS } from './config/locations';
 import { fetchAttendanceLogs, loginUser, fetchDevices, fetchEmployeeCount, fetchDeviceEmployees, fetchAllEmployees, fetchEmployeeLogs, bindDevice } from './services/api';
 
 // GPSAttendance page disabled temporarily
@@ -51,9 +52,7 @@ const App: React.FC = () => {
 
 
   // Location State
-  const [locations, setLocations] = useState<LocationConfig[]>([
-    { id: '1', name: 'المقر الرئيسي', lat: 24.7136, lng: 46.6753, radius: 200, active: true }
-  ]);
+  const [locations, setLocations] = useState<LocationConfig[]>(LOCATIONS);
 
   // Logs Filter State
   const [logSearchTerm, setLogSearchTerm] = useState('');

@@ -282,6 +282,8 @@ export const fetchLegacyProxy = async (path: string, options: RequestInit = {}) 
       localPath = path.replace('/iclock', '/legacy_iclock');
     } else if (path.startsWith('/api-token-auth')) {
       localPath = '/legacy_auth' + path;
+    } else if (path.startsWith('/personnel')) {
+      localPath = path.replace('/personnel', '/legacy_personnel');
     }
 
     // Fetch relative path so current domain handles it (Vite or Render)
@@ -908,95 +910,75 @@ export const submitGPSAttendance = async (
   lng: number,
   type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN',
   manualArea?: string,
-  accuracy?: number
+  accuracy?: number,
+  isRemote?: boolean // Added Flag
 ): Promise<{ success: boolean; area?: string }> => {
   try {
-    let punchState = '0';
-    switch (type) {
-      case 'CHECK_IN': punchState = '0'; break;
-      case 'CHECK_OUT': punchState = '1'; break;
-      case 'BREAK_OUT': punchState = '2'; break;
-      case 'BREAK_IN': punchState = '3'; break;
-    }
+    const punchState = type === 'CHECK_IN' ? '0' :
+      type === 'CHECK_OUT' ? '1' :
+        type === 'BREAK_OUT' ? '2' : '3';
 
-    // Payload matching /att/api/webpunches/ specification
-    const headers = await getHeaders();
-    // Using full path to avoid baseUrl issues (which might be /iclock/api)
-    const empResponse = await fetch(`${BASE_FOR_ENV}/personnel/api/employees/?emp_code=${employeeId}`, {
-      method: 'GET',
-      headers
-    });
-
-    if (!empResponse.ok) {
-      throw new Error("Could not fetch employee details for ID lookup");
-    }
-
-    const empData = await empResponse.json();
-    const internalId = empData.data && empData.data.length > 0 ? empData.data[0].id : null;
-
-    if (!internalId) {
-      throw new Error(`Internal ID not found for employee code: ${employeeId}`);
-    }
-
-    // 2. Time Setup (Local Time)
+    // Time Setup (Local Time)
     const now = new Date();
     const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString();
     const punchTime = localIso.replace('T', ' ').split('.')[0];
 
-    // 3. Dynamic Area & Device Mapping (for display)
-    let areaName = manualArea || 'الرياض'; // Prefer manual area if provided
-    let deviceSn = 'RKQ4235200204'; // Default to Riyadh Device
-
-    if (!manualArea) {
-      if (lat > 25.0) {
-        areaName = 'القصيم';
-        deviceSn = 'RKQ4235200199';
-      } else if (lng > 49.0) {
-        areaName = 'الدمام';
-      }
-    } else {
-      // Map Manual Names to Device SNs if needed
-      if (manualArea === 'القصيم') deviceSn = 'RKQ4235200199';
-      if (manualArea === 'جهاز تجريبي ( فيصل )') deviceSn = 'AF4C232560143';
+    // Determine Path (PROD vs DEV)
+    let path = '/biometric_api/iclock/transactions.php';
+    if (Capacitor.isNativePlatform() || window.location.hostname === 'localhost') {
+      // CORRECT PATH FOUND: public_html/api/iclock
+      path = 'https://qssun.solar/api/iclock/transactions.php';
     }
 
-    // 4. Construct Payload (Using WebPunch Endpoint but Spoofing Device)
-    // Try source=1 and real terminal_sn to see if server assigns correct Device Name
+    // Payload for Custom PHP Backend
     const payload = {
-      company_code: '1',
       emp_code: employeeId,
-      emp: internalId,
       punch_time: punchTime,
-      punch_state: parseInt(punchState),
-      verify_type: 1, // 1 = Fingerprint/PWD (Device), 101 = GPS
-      source: 1,      // 1 = Device, 3 = Web
-      gps_location: `${lat},${lng}`,
+      punch_state: punchState,
+      area_alias: manualArea || 'Mobile Punch',
       latitude: lat,
       longitude: lng,
-      area_alias: areaName,
-      terminal_sn: deviceSn,
+      is_remote: isRemote,
       memo: accuracy ? `ACC:${Math.round(accuracy)}m` : 'ACC:N/A'
     };
 
-    // 5. Submit Web Punch
-    const response = await fetch(`${BASE_FOR_ENV}/att/api/webpunches/`, {
+    console.log("Submitting GPS Punch:", payload, "to", path);
+
+    const response = await fetch(path, {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    if (!response.ok) {
-      const t = await response.text();
-      // Specifically handle Duplicate Punch to not crash the UI
-      if (t.includes("Duplicate")) {
-        return { success: true, area: areaName };
-      }
-      throw new Error(`Failed to submit web punch: ${t}`);
+    const responseText = await response.text();
+    console.log("Raw Server Response:", responseText);
+
+    if (responseText.trim().startsWith('<')) {
+      const preview = responseText.substring(0, 200).replace(/\s+/g, ' ');
+      throw new Error(`Invalid HTML Response from ${path}: ${preview}...`);
     }
 
-    return { success: true, area: areaName };
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`JSON Error: ${responseText.substring(0, 100)}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Server Error: ${result.message || responseText}`);
+    }
+
+    console.log("Punch Result:", result);
+
+    if (result.status === 'success' || (result.message && result.message.includes('Duplicate'))) {
+      return { success: true, area: manualArea || 'Mobile' };
+    } else {
+      throw new Error(result.message || 'Unknown Error');
+    }
+
   } catch (error) {
-    console.error("GPS Submit Error via ADMS:", error);
+    console.error("GPS Submit Error via Transactions.php:", error);
     throw error;
   }
 };
@@ -1065,7 +1047,8 @@ export const submitBiometricAttendance = async (
       payload.terminal_sn = terminalSn;
     }
     const headers = await getHeaders();
-    const response = await fetch(`/personnel/api/transactions/`, {
+    // Use Proxy Wrapper to handle Native vs Web (Localhost) URLs
+    const response = await fetchLegacyProxy('/personnel/api/transactions/', {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
