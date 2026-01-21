@@ -353,29 +353,33 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
                   {nearestLocation.allowed
                     ? `موقع آمن: ${nearestLocation.name}`
                     : allowRemote
-                      ? `تسجيل عن بعد (خارج النطاق: ${nearestLocation.name})`
-                      : `أنت خارج نطاق العمل (${nearestLocation.name})`}
+                      ? `أنت خارج نطاق العمل (تسجيل عن بعد)`
+                      : `أنت خارج نطاق العمل`}
                 </div>
 
-                {/* Accuracy Meter Visual */}
-                {location && (
-                  <div className="flex items-center gap-2 mt-2 bg-black/20 px-3 py-1 rounded-full border border-white/20">
-                    {location.accuracy < 20 ? <Wifi size={14} className="text-emerald-400" /> : <Radar size={14} className="text-amber-600 animate-pulse" />}
-                    <span className="font-mono text-[10px] opacity-80">
-                      دقة الإشارة:
-                      <strong className={`mx-1 ${location.accuracy < 20 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {Math.round(location.accuracy)}m
-                      </strong>
-                      {location.accuracy < 20 ? '(ممتاز)' : '(ضعيف)'}
-                    </span>
-                  </div>
-                )}
+                {/* Accuracy/Distance: Hide if Remote Allowed (Cleaner UI) */}
+                {!allowRemote && (
+                  <>
+                    {/* Accuracy Meter Visual */}
+                    {location && (
+                      <div className="flex items-center gap-2 mt-2 bg-black/20 px-3 py-1 rounded-full border border-white/20">
+                        {location.accuracy < 20 ? <Wifi size={14} className="text-emerald-400" /> : <Radar size={14} className="text-amber-600 animate-pulse" />}
+                        <span className="font-mono text-[10px] opacity-80">
+                          دقة الإشارة:
+                          <strong className={`mx-1 ${location.accuracy < 20 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {Math.round(location.accuracy)}m
+                          </strong>
+                          {location.accuracy < 20 ? '(ممتاز)' : '(ضعيف)'}
+                        </span>
+                      </div>
+                    )}
 
-
-                {!nearestLocation.allowed && nearestLocation.distance && (
-                  <div className="text-[10px] opacity-80 font-mono mt-1">
-                    تبعد {Math.round(nearestLocation.distance)} متر عن النطاق المسموح
-                  </div>
+                    {!nearestLocation.allowed && nearestLocation.distance && (
+                      <div className="text-[10px] opacity-80 font-mono mt-1">
+                        تبعد {Math.round(nearestLocation.distance)} متر عن النطاق المسموح
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             ) : (
