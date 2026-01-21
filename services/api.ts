@@ -1297,7 +1297,7 @@ interface LocalUserData {
 const fetchLocalUserData = async (): Promise<Map<string, LocalUserData>> => {
   try {
     // Always use the absolute URL for the PHP backend (CORS is enabled)
-    const url = 'https://qssun.solar/api/api/users.php';
+    const url = 'https://qssun.solar/api/users.php';
 
     const res = await fetch(url);
     if (!res.ok) {
@@ -1481,7 +1481,7 @@ export const deleteEmployee = async (id: string | number): Promise<void> => {
 
 export const updateLocalUserData = async (userId: string, email: string, allowRemote: boolean): Promise<void> => {
   // Always use the absolute URL for the PHP backend (CORS is enabled)
-  const url = 'https://qssun.solar/api/api/users.php';
+  const url = 'https://qssun.solar/api/users.php';
 
   try {
     const res = await fetch(url, {
