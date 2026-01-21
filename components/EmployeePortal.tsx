@@ -30,8 +30,8 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 type PunchType = 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN';
 
 const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkMode, toggleTheme }) => {
-  // Feature Flag: Enable Remote Punch for specific users or all
-  const allowRemote = user.id === '1093394672';
+  // Feature Flag: Enable Remote Punch via DB Setting (Dynamic)
+  const allowRemote = user.allow_remote === true;
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [location, setLocation] = useState<{ lat: number, lng: number, accuracy: number } | null>(null);
@@ -98,6 +98,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
             accuracy: position.coords.accuracy
           });
 
+
           // Check Geofences
           let bestMatch = null;
           let minDistance = Infinity;
@@ -133,9 +134,12 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
   }, []);
 
   const handleAttendance = async () => {
-    // Dev Bypass: Allow if isDev, regardless of location
-    // Remote Allowed: Allow if allowRemote is true
-    if (!isDev && !allowRemote && (!location || !nearestLocation?.allowed)) return;
+    // Dev Bypass: Allow if isDev
+    // Remote Allowed: Allow if DB setting is true
+    if (!isDev && !allowRemote && (!location || !nearestLocation?.allowed)) {
+      alert('⚠️ ' + (nearestLocation ? `أنت خارج نطاق ${nearestLocation.name}` : 'أنت خارج نطاق العمل المصرح به'));
+      return;
+    }
 
 
 

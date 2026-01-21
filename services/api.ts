@@ -399,13 +399,34 @@ export const loginUser = async (username: string, password?: string): Promise<Us
     const record = list[0];
     const realName = record.emp_name || record.first_name || 'موظف';
 
+    // 4. Fetch Remote Access Permissions
+    let allowRemote = false;
+    try {
+      // Use robust absolute URL as confirmed working
+      const permUrl = 'https://qssun.solar/api/iclock/users.php';
+      const permRes = await fetch(permUrl);
+      if (permRes.ok) {
+        const permData = await permRes.json();
+        if (Array.isArray(permData)) {
+          const me = permData.find((u: any) => String(u.user_id) === String(username));
+          if (me) {
+            // Loose equality for PHP 0/1 or boolean
+            allowRemote = (me.allow_remote == 1 || me.allow_remote === '1' || me.allow_remote === true);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Permission Fetch Failed", err);
+    }
+
     return {
       id: username,
       name: realName,
       role: 'EMPLOYEE',
       department: 'الموظفين', // Placeholder
       position: 'Team Member',
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(realName)}&background=random`
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(realName)}&background=random`,
+      allow_remote: allowRemote
     };
 
   } catch (error: any) {
@@ -1297,7 +1318,8 @@ interface LocalUserData {
 const fetchLocalUserData = async (): Promise<Map<string, LocalUserData>> => {
   try {
     // Always use the absolute URL for the PHP backend (CORS is enabled)
-    const url = 'https://qssun.solar/api/users.php';
+    // User moved file to iclock folder
+    const url = 'https://qssun.solar/api/iclock/users.php';
 
     const res = await fetch(url);
     if (!res.ok) {
@@ -1481,7 +1503,8 @@ export const deleteEmployee = async (id: string | number): Promise<void> => {
 
 export const updateLocalUserData = async (userId: string, email: string, allowRemote: boolean): Promise<void> => {
   // Always use the absolute URL for the PHP backend (CORS is enabled)
-  const url = 'https://qssun.solar/api/users.php';
+  // User moved file to iclock folder
+  const url = 'https://qssun.solar/api/iclock/users.php';
 
   try {
     const res = await fetch(url, {

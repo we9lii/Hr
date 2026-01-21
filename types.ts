@@ -15,6 +15,7 @@ export interface User {
   avatar?: string;
   department?: string;
   position?: string;
+  allow_remote?: boolean;
 }
 
 export interface Employee {

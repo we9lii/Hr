@@ -10,7 +10,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-include_once '../db_connect.php';
+// Debugging: Enable errors
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
+// Debugging: Enable errors
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
+// --- DB Connection (Inlined for reliability) ---
+$pdo = null;
+try {
+    $host = "localhost";
+    $db_name = "qssunsolar_qssunsolar_hr";
+    $username = "qssunsol_qssun_user";
+    $password = "g3QL]cRAHvny";
+
+    $dsn = "mysql:host=$host;dbname=$db_name;charset=utf8mb4";
+    $options = [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ];
+    $pdo = new PDO($dsn, $username, $password, $options);
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Database connection failed', 'details' => $e->getMessage()]);
+    exit;
+}
 
 // GET: List all users with emails and remote status
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
