@@ -159,7 +159,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkM
     // Dev Bypass: Allow if isDev
     // Remote Allowed: Allow if DB setting is true
     if (!isDev && !allowRemote && (!location || !nearestLocation?.allowed)) {
-      alert('⚠️ ' + (nearestLocation ? `أنت خارج نطاق ${nearestLocation.name}` : 'أنت خارج نطاق العمل المصرح به'));
+      alert('⚠️ أنت خارج نطاق العمل');
       return;
     }
 
