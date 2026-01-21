@@ -664,7 +664,25 @@ const App: React.FC = () => {
                                       return 'الإدارة';
                                     }
                                     // Default Logic
-                                    return log.deviceAlias || (log.deviceSn ? (log.deviceSn === 'Web' ? 'الجوال' : `${log.deviceSn}`) : (log.location ? (log.location.address || `${log.location.lat.toFixed(4)}...`) : '-'));
+                                    const locText = log.deviceAlias || (log.deviceSn ? (log.deviceSn === 'Web' ? 'الجوال' : `${log.deviceSn}`) : (log.location ? (log.location.address || `${log.location.lat.toFixed(4)}...`) : '-'));
+
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        <span>{locText}</span>
+                                        {log.location && log.location.lat !== 0 && (
+                                          <a
+                                            href={`https://www.google.com/maps?q=${log.location.lat},${log.location.lng}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="p-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-full transition-colors"
+                                            title="عرض الموقع على الخريطة"
+                                            onClick={(e) => e.stopPropagation()} // Prevent row click
+                                          >
+                                            <MapPin size={12} />
+                                          </a>
+                                        )}
+                                      </div>
+                                    );
                                   })()}
                                 </span>
                               </td>

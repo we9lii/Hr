@@ -1288,7 +1288,13 @@ export const fetchEmployeeCount = async (): Promise<number> => {
 };
 
 // New: Fetch Local Emails from PHP Backend
-const fetchLocalEmails = async (): Promise<Map<string, string>> => {
+// New: Fetch Local User Data (Email + Remote Access Config)
+interface LocalUserData {
+  email: string;
+  allow_remote: boolean;
+}
+
+const fetchLocalUserData = async (): Promise<Map<string, LocalUserData>> => {
   try {
     let url = '/biometric_api/api/users.php'; // Local Proxy path
     if (Capacitor.isNativePlatform()) {
@@ -1297,10 +1303,15 @@ const fetchLocalEmails = async (): Promise<Map<string, string>> => {
     const res = await fetch(url);
     if (!res.ok) return new Map();
     const data = await res.json();
-    const map = new Map<string, string>();
+    const map = new Map<string, LocalUserData>();
     if (Array.isArray(data)) {
       data.forEach((u: any) => {
-        if (u.user_id && u.email) map.set(String(u.user_id), u.email);
+        if (u.user_id) {
+          map.set(String(u.user_id), {
+            email: u.email || '',
+            allow_remote: u.allow_remote === 1 || u.allow_remote === true || u.allow_remote === '1'
+          });
+        }
       });
     }
     return map;
@@ -1309,6 +1320,10 @@ const fetchLocalEmails = async (): Promise<Map<string, string>> => {
 
 export const fetchAllEmployees = async (): Promise<any[]> => {
   const headers = await getHeaders();
+
+  // Parallel Fetch: Legacy + Local Data
+  const [localMap] = await Promise.all([fetchLocalUserData()]);
+
   let url = `${BASE_FOR_ENV}/personnel/api/employees/?page_size=200`;
   const map = new Map<string, any>();
 
@@ -1337,6 +1352,9 @@ export const fetchAllEmployees = async (): Promise<any[]> => {
         // Enrich default fields if missing from list view
         const name = String(it.emp_name || `${it.first_name || ''} ${it.last_name || ''}`.trim() || code);
 
+        // Merge Local Data
+        const localData = localMap.get(code);
+
         // Ensure useful fields are present
         const fullObj = {
           ...it,
@@ -1349,7 +1367,8 @@ export const fetchAllEmployees = async (): Promise<any[]> => {
           dept_name: it.department ? (it.department.dept_name || it.department.name) : undefined,
           position_name: it.position ? (it.position.position_name || it.position.name) : undefined,
           area_name: (it.area && it.area.length > 0) ? (it.area[0].area_name || it.area[0].name) : undefined,
-          email: it.email // Use Legacy Email only
+          email: localData?.email || it.email, // Prefer Local Email
+          allow_remote: localData?.allow_remote || false // Default False
         };
 
         if (!map.has(code)) map.set(code, fullObj);
@@ -1452,6 +1471,29 @@ export const deleteEmployee = async (id: string | number): Promise<void> => {
   if (!response.ok) {
     const t = await response.text();
     throw new Error(`فشل حذف الموظف: ${response.status} - ${t}`);
+  }
+};
+
+export const updateLocalUserData = async (userId: string, email: string, allowRemote: boolean): Promise<void> => {
+  let url = '/biometric_api/api/users.php';
+  if (Capacitor.isNativePlatform()) {
+    url = 'https://qssun.solar/api/api/users.php';
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        email: email,
+        allow_remote: allowRemote ? 1 : 0
+      })
+    });
+    if (!res.ok) throw new Error("Failed to save local data");
+  } catch (e) {
+    console.error("Local Data Save Error", e);
+    // Don't block main flow if this fails
   }
 };
 

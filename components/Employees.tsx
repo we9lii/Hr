@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Search, User, Briefcase, MapPin, Calendar, Check, X, Building2, Trash2, Mail, Pencil, ClipboardList, FileText, CalendarClock, Clock, AlertCircle } from 'lucide-react';
-import { fetchAllEmployees, createEmployee, deleteEmployee, fetchDepartments, fetchAreas, fetchPositions, updateEmployee, createManualTransaction, fetchAttendanceLogsRange, deleteTransaction, updateTransaction } from '../services/api';
+import { fetchAllEmployees, createEmployee, deleteEmployee, fetchDepartments, fetchAreas, fetchPositions, updateEmployee, createManualTransaction, fetchAttendanceLogsRange, deleteTransaction, updateTransaction, updateLocalUserData } from '../services/api';
 
 const Employees: React.FC = () => {
     // Extended type to include potential extra fields we might fetch individually later, 
@@ -118,166 +118,14 @@ const Employees: React.FC = () => {
             hire_date: new Date().toISOString().split('T')[0],
             mobile: '',
             email: '',
-            area: areas.length > 0 ? String(areas[0].id) : ''
+            area: areas.length > 0 ? String(areas[0].id) : '',
+            allow_remote: false
         });
         setIsEditMode(false);
         setEditId(null);
     };
 
-    const handleOpenAdd = () => {
-        resetForm();
-        setIsModalOpen(true);
-    };
-
-    // Prepare Manual Log Modal
-    const handleOpenManualLog = () => {
-        // Default to first employee if available or empty
-        const defaultCode = employees.length > 0 ? employees[0].code : '';
-        const defaultName = employees.length > 0 ? employees[0].name : '';
-
-        // Format Current Date Time for Input (YYYY-MM-DDTHH:mm)
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const mins = String(now.getMinutes()).padStart(2, '0');
-        const defaultTime = `${year}-${month}-${day}T${hours}:${mins}`;
-
-        setManualData({
-            emp_code: defaultCode,
-            punch_time: defaultTime,
-            punch_state: '0',
-            purpose: ''
-        });
-        setManualSearch(defaultName);
-        setShowEmpList(false);
-        setEditLogId(null); // Reset Edit Mode
-        setIsManualModalOpen(true);
-    };
-
-    const handleEditLog = (log: any) => {
-        setEditLogId(log.id);
-        const pTime = log.timestamp.slice(0, 16); // YYYY-MM-DDTHH:mm
-
-        let pState = '0';
-        if (log.type === 'CHECK_IN') pState = '0';
-        if (log.type === 'CHECK_OUT') pState = '1';
-        if (log.type === 'BREAK_OUT') pState = '2';
-        if (log.type === 'BREAK_IN') pState = '3';
-        if (log.type === 'OVERTIME_IN') pState = '4';
-        if (log.type === 'OVERTIME_OUT') pState = '5';
-        if (log.purpose && log.purpose.includes('غياب')) pState = '100'; // Custom for UI
-
-        setManualData({
-            emp_code: log.employeeId,
-            punch_time: pTime,
-            punch_state: pState,
-            purpose: log.purpose || ''
-        });
-        setManualSearch(log.employeeName);
-        setIsManualModalOpen(true);
-    };
-
-    const handleDeleteLog = async (id: string) => {
-        if (!confirm('هل أنت متأكد من حذف هذا السجل؟ لا يمكن التراجع عن هذا الإجراء.')) return;
-        try {
-            await deleteTransaction(id);
-            setLogs(prev => prev.filter(l => l.id !== id));
-            alert('تم الحذف بنجاح');
-        } catch (e: any) {
-            alert(e.message);
-        }
-    };
-
-    const handleManualSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        // VALIDATION: Employee is required
-        if (!manualData.emp_code) {
-            alert('⚠️ يجب اختيار موظف للعملية.');
-            return;
-        }
-
-        // VALIDATION: If Absence (State 4), Reason is mandatory
-        if (!isBulk && manualData.punch_state === '4' && !manualData.purpose.trim()) {
-            alert('⚠️ يجب كتابة سبب الغياب عند اختيار حالة "غياب".');
-            return;
-        }
-
-        setSubmitting(true);
-        try {
-            if (isBulk) {
-                const start = new Date(bulkData.startDate);
-                const end = new Date(bulkData.endDate);
-                let count = 0;
-
-                // Loop through dates
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                    // Weekend Check (Fri=5, Sat=6)
-                    if (!bulkData.includeWeekends && (d.getDay() === 5 || d.getDay() === 6)) continue;
-
-                    const dateStr = d.toISOString().split('T')[0];
-
-                    // 1. Check In
-                    await createManualTransaction({
-                        emp_code: manualData.emp_code,
-                        punch_time: `${dateStr} ${bulkData.startTime}:00`,
-                        punch_state: '0', // Check In
-                        purpose: manualData.purpose || 'تحضير يدوي (فترة)'
-                    });
-
-                    // 2. Check Out
-                    await createManualTransaction({
-                        emp_code: manualData.emp_code,
-                        punch_time: `${dateStr} ${bulkData.endTime}:00`,
-                        punch_state: '1', // Check Out
-                        purpose: manualData.purpose || 'تحضير يدوي (فترة)'
-                    });
-                    count++;
-                }
-
-                alert(`تم تسجيل الحضور لـ ${count} أيام عمل بنجاح ✅`);
-            } else {
-                // Single Transaction Logic
-                // Convert local input time to "YYYY-MM-DD HH:mm:ss"
-                const pTime = manualData.punch_time.replace('T', ' ') + ':00'; // Append seconds
-
-                let finalState = manualData.punch_state;
-                let finalPurpose = manualData.purpose;
-
-                // Handle Custom "Absence" State (100)
-                if (manualData.punch_state === '100') {
-                    finalState = '0'; // Record as Check-In (or 1 Check-Out) to register event
-                    finalPurpose = `غياب: ${manualData.purpose}`;
-                }
-
-                if (editLogId) {
-                    await updateTransaction(editLogId, {
-                        punch_time: pTime,
-                        punch_state: finalState,
-                        purpose: finalPurpose
-                    });
-                    alert('تم تعديل السجل بنجاح ✅');
-                } else {
-                    await createManualTransaction({
-                        emp_code: manualData.emp_code,
-                        punch_time: pTime,
-                        punch_state: finalState,
-                        purpose: finalPurpose
-                    });
-                    alert('تم تسجيل الملاحظة / الحركة بنجاح ✅');
-                }
-            }
-
-            if (activeTab === 'logs') loadManualLogs();
-            setIsManualModalOpen(false);
-        } catch (err: any) {
-            alert(err.message);
-        } finally {
-            setSubmitting(false);
-        }
-    };
+    // ... (lines 127-285)
 
     const handleEdit = async (emp: any) => {
         // ideally we fetch full details here.
@@ -302,7 +150,8 @@ const Employees: React.FC = () => {
             hire_date: emp.hire_date ? emp.hire_date.split('T')[0] : new Date().toISOString().split('T')[0], // Default
             mobile: emp.mobile || '',
             email: emp.email || '',
-            area: emp.area_id ? String(emp.area_id) : (areas.length > 0 ? String(areas[0].id) : '')
+            area: emp.area_id ? String(emp.area_id) : (areas.length > 0 ? String(areas[0].id) : ''),
+            allow_remote: emp.allow_remote || false
         });
 
         // NOTE: Since the list endpoint is lightweight, we might be missing specific fields like email or mobile 
@@ -316,7 +165,7 @@ const Employees: React.FC = () => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            // Construct Payload
+            // Construct Payload (Legacy)
             const payload: any = {
                 emp_code: formData.emp_code,
                 first_name: formData.first_name,
@@ -332,9 +181,16 @@ const Employees: React.FC = () => {
 
             if (isEditMode && editId) {
                 await updateEmployee(editId, payload);
+                // NEW: Update Local Data (Email + Remote Access)
+                // Use emp_code as the ID for mapping usually, but check if we need user_id (emp_code is usually the key)
+                await updateLocalUserData(formData.emp_code, formData.email, formData.allow_remote);
+
                 alert('تم تحديث بيانات الموظف بنجاح 🔄');
             } else {
                 await createEmployee(payload);
+                // NEW: Save Local Data for New Employee too
+                await updateLocalUserData(formData.emp_code, formData.email, formData.allow_remote);
+
                 alert('تم إضافة الموظف بنجاح ✅');
             }
 
@@ -679,6 +535,26 @@ const Employees: React.FC = () => {
                                                 className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:border-blue-500 outline-none transition-all"
                                                 placeholder="employee@example.com"
                                             />
+                                        </div>
+
+                                        {/* Remote Access Toggle */}
+                                        <div className="col-span-2 bg-slate-950 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                                            <div>
+                                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                                    <MapPin size={16} className="text-purple-500" />
+                                                    السماح بالتحضير عن بعد
+                                                </h4>
+                                                <p className="text-xs text-slate-500 mt-1">تفعيل هذا الخيار يسمح للموظف بتسجيل الحضور من أي مكان دون التقيد بالسياج الجغرافي.</p>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={formData.allow_remote}
+                                                    onChange={e => setFormData({ ...formData, allow_remote: e.target.checked })}
+                                                />
+                                                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                                            </label>
                                         </div>
                                     </div>
                                 </div>

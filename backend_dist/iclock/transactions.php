@@ -52,6 +52,150 @@ function utf8ize($d)
     return $d;
 }
 
+// ==========================================
+// BioTime Web API Integration (Replaces ADMS)
+// ==========================================
+
+function getBioTimeToken()
+{
+    $url = "http://qssun.dyndns.org:8085/api-token-auth/";
+    $credentials = [
+        'username' => 'admin',
+        'password' => 'Admin@123'
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($credentials));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlError) {
+        logDebug("Token Fetch Error: $curlError");
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    if (isset($data['token'])) {
+        return $data['token'];
+    }
+
+    logDebug("Token Fetch Failed (Code $httpCode): $response");
+    return null;
+}
+
+function sendToBioTimeWebAPI($emp_code, $punch_time, $punch_state, $terminal_sn, $area_alias, $gps_location)
+{
+    // 1. Get Auth Token
+    $token = getBioTimeToken();
+    if (!$token) {
+        return ['status' => 'error', 'message' => 'Failed to authenticate with BioTime'];
+    }
+
+    // 2. Prepare Payload
+    // Correct Endpoint for Web Punches (found via Docs)
+    $url = "http://qssun.dyndns.org:8085/att/api/webpunches/";
+
+    // Mapping punch_state to BioTime standards
+    // 0: Check In, 1: Check Out, 2: Break Out, 3: Break In
+
+    // Ensure Verify Type is '1' (Fingerprint) or similar.
+    // For Web Punch, usually source=1 or similar is used internally.
+
+    $payload = [
+        'emp_code' => $emp_code,
+        'punch_time' => $punch_time,
+        'punch_state' => $punch_state,
+        'source' => 'MOBILE', // Explicitly mark as mobile
+        'verify_type' => 1    // Fingerprint/Web
+    ];
+
+    if (!empty($terminal_sn)) {
+        $payload['terminal_sn'] = $terminal_sn;
+    }
+    if (!empty($area_alias)) {
+        $payload['area_alias'] = $area_alias;
+    }
+
+    // Optional: Add GPS if available
+    if ($gps_location) {
+        $payload['gps_location'] = $gps_location;
+    }
+
+    // 3. Send Request
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Authorization: Token ' . $token
+    ]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    // 4. Log and Return
+    logDebug("BioTime API Response [$httpCode]: $response");
+
+    if ($curlError) {
+        return ['status' => 'error', 'message' => "Curl Error: $curlError"];
+    }
+
+    if ($httpCode >= 200 && $httpCode < 300) {
+        return ['status' => 'success', 'code' => $httpCode, 'body' => 'OK'];
+    }
+
+    return ['status' => 'error', 'code' => $httpCode, 'body' => $response];
+}
+
+function sendToBioTimeManualLog($emp_code, $punch_time, $state, $reason = 'Mobile Punch')
+{
+    $token = getBioTimeToken();
+    if (!$token)
+        return ['status' => 'error', 'message' => 'Auth Failed'];
+
+    $url = "http://qssun.dyndns.org:8085/att/api/manuallogs/";
+
+    // Manual Logs use different keys: 'employee' instead of 'emp_code'
+    $payload = [
+        'employee' => $emp_code,
+        'punch_time' => $punch_time,
+        'punch_state' => (string) $state,
+        'apply_reason' => $reason
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Authorization: Token ' . $token
+    ]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    logDebug("BioTime ManualLog Response [$httpCode]: $response");
+
+    if ($httpCode >= 200 && $httpCode < 300) {
+        return ['status' => 'success', 'code' => $httpCode, 'body' => 'OK'];
+    }
+    return ['status' => 'error', 'code' => $httpCode, 'body' => $response];
+}
+
 function safeJsonExit($data, $code = 200)
 {
     // Clear buffer of any previous warnings/text
@@ -75,53 +219,7 @@ function safeJsonExit($data, $code = 200)
     exit;
 }
 
-function sendRequest($url, $postData)
-{
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-    return ['code' => $httpCode, 'resp' => $response, 'err' => $error];
-}
-
-function sendToBioTimeADMS($badge, $time, $sn, $state, $verify)
-{
-    // 1. Primary URL
-    $url1 = "http://qssun.dyndns.org:8085/iclock/cdata?SN=" . $sn . "&table=ATTLOG&Stamp=9999";
-    // 2. Backup URL
-    $url2 = "http://127.0.0.1:8085/iclock/cdata?SN=" . $sn . "&table=ATTLOG&Stamp=9999";
-
-    $postData = $badge . "\t" . $state . "\t" . $verify . "\t" . $time . "\t0\t0\t\t\n";
-
-    $res = sendRequest($url1, $postData);
-    logDebug("Public ADMS: Code={$res['code']} Body={$res['resp']} Err={$res['err']}");
-
-    $success = ($res['code'] == 200 && strpos($res['resp'], 'OK') !== false);
-    $source = "Public";
-
-    if (!$success) {
-        $res = sendRequest($url2, $postData);
-        logDebug("Local ADMS: Code={$res['code']} Err={$res['err']}");
-        $success = ($res['code'] == 200 && strpos($res['resp'], 'OK') !== false);
-        $source = "Local";
-    }
-
-    return [
-        'success' => $success,
-        'source' => $source,
-        'code' => $res['code'],
-        'response' => $res['resp'],
-        'error' => $res['err']
-    ];
-}
 
 // --- DB Connection (Inlined) ---
 $pdo = null;
@@ -184,12 +282,22 @@ try {
             $d->setTimezone(new DateTimeZone('Asia/Riyadh'));
             $localTime = $d->format('Y-m-d H:i:s');
         } else {
-            $localTime = date('Y-m-d H:i:s', strtotime($inputTime));
+            // App sends ISO string stripped of 'T' and 'Z' (e.g. "2026-01-21 06:59:21")
+            // This is UTC time. We must convert it to Riyadh.
+            $d = new DateTime($inputTime, new DateTimeZone('UTC'));
+            $d->setTimezone(new DateTimeZone('Asia/Riyadh'));
+            $localTime = $d->format('Y-m-d H:i:s');
         }
 
         $isRemote = $data['is_remote'] ?? false;
-        $sn = $data['terminal_sn'] ?: ($isRemote ? 'AF4C232560143' : 'MANUAL');
-        $verify = $isRemote ? 1 : 15;
+
+        // --- NEW SN LOGIC ---
+        // If app sends a specific SN, use it. If "Web/Virtual", use empty to let BioTime decide or map.
+        $sn = $data['terminal_sn'] ?: ($isRemote ? '' : '');
+        // User hated forced SN, so let's default to empty/null for API if not present.
+
+        // Use 1 (Fingerprint) as a standard accepted method for Virtual Devices.
+        $verify = 1;
         $state = $data['punch_state'] ?? 0;
 
         // 1. Save to Local DB (if available)
@@ -201,7 +309,7 @@ try {
                     $localTime,
                     $state,
                     $verify,
-                    $sn,
+                    $data['terminal_sn'] ?: 'MOBILE', // Log 'MOBILE' for local DB clarity
                     $data['latitude'] ?? 0,
                     $data['longitude'] ?? 0,
                     $data['image_proof'] ?? ''
@@ -226,15 +334,112 @@ try {
             }
         }
 
-        // 3. Send to BioTime
-        $bioSn = 'AF4C232560143';
-        $bioResult = sendToBioTimeADMS($validBadge, $localTime, $bioSn, $state, $verify);
+        // 3. Send to BioTime Web API
+        $bioSn = $sn; // Can be empty
+        $area = '';   // Default empty, let BioTime handle
+        $gps = (isset($data['latitude']) && isset($data['longitude']))
+            ? $data['latitude'] . ',' . $data['longitude']
+            : '';
+
+        $bioResult = sendToBioTimeWebAPI($validBadge, $localTime, $state, $bioSn, $area, $gps);
 
         safeJsonExit(['status' => 'success', 'message' => 'Recorded', 'bio_result' => $bioResult]);
     }
 
     // GET Request (Fetch Logs)
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+
+        // --- DEBUG TOOLS ---
+        if (isset($_GET['test_auth'])) {
+            $url = "http://qssun.dyndns.org:8085/api-token-auth/";
+            $credentials = ['username' => 'admin', 'password' => 'Admin@123'];
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($credentials));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+
+            $response = curl_exec($ch);
+            $info = curl_getinfo($ch);
+            $err = curl_error($ch);
+            curl_close($ch);
+
+            safeJsonExit([
+                'test' => 'BioTime Auth',
+                'url' => $url,
+                'http_code' => $info['http_code'],
+                'curl_error' => $err,
+                'response' => json_decode($response, true) ?? $response
+            ]);
+        }
+
+        // --- TEST PUNCH ---
+        if (isset($_GET['test_punch'])) {
+            $emp = $_GET['emp'] ?? '1093394672'; // Default to Faisal
+            // Use current time
+            $time = date('Y-m-d H:i:s');
+            $mode = $_GET['mode'] ?? 'web'; // 'web' or 'manual'
+
+            if ($mode === 'manual') {
+                // Test Manual Log Endpoint
+                $result = sendToBioTimeManualLog($emp, $time, 0, 'MobileTest');
+                safeJsonExit([
+                    'test' => 'BioTime Manual Log',
+                    'emp' => $emp,
+                    'time' => $time,
+                    'api_url' => "http://qssun.dyndns.org:8085/att/api/manuallogs/",
+                    'api_result' => $result
+                ]);
+            } else {
+                // Test Web Punch Endpoint (Default)
+                // Allow dynamic SN/Area testing via URL
+                // Default to empty to see if BioTime accepts "Web Punch" without SN
+                $sn = $_GET['sn'] ?? '';
+                $area = $_GET['area'] ?? '';
+
+                $gps = '24.7136,46.6753';
+
+                // Call the function
+                $result = sendToBioTimeWebAPI($emp, $time, 0, $sn, $area, $gps);
+
+                // Create clickable map link for verification
+                $mapLink = "https://www.google.com/maps?q=" . str_replace(' ', '', $gps);
+
+                safeJsonExit([
+                    'test' => 'BioTime Web Punch',
+                    'emp' => $emp,
+                    'time' => $time,
+                    'used_sn' => $sn,
+                    'used_area' => $area,
+                    'gps_sent' => $gps,
+                    'google_maps_link' => $mapLink,
+                    'api_url' => "http://qssun.dyndns.org:8085/att/api/webpunches/",
+                    'api_result' => $result
+                ]);
+            }
+        }
+
+        if (isset($_GET['view_logs'])) {
+            $logFile = __DIR__ . '/gps_debug_log.txt';
+            if (file_exists($logFile)) {
+                // Determine if we need to clear logs
+                if (isset($_GET['clear'])) {
+                    file_put_contents($logFile, "");
+                    echo "Logs Cleared.";
+                    exit;
+                }
+                echo "<h3>Debug Log (" . date('Y-m-d H:i:s') . ")</h3>";
+                echo "<pre>" . htmlspecialchars(file_get_contents($logFile)) . "</pre>";
+                exit;
+            } else {
+                echo "No log file found at $logFile";
+                exit;
+            }
+        }
+        // -------------------
+
         if (!$pdo)
             safeJsonExit(['error' => 'DB Unavailable'], 500);
 
