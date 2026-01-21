@@ -927,14 +927,8 @@ export const submitGPSAttendance = async (
       terminal_sn: terminalSn // Pass to PHP
     };
 
-    // CORRECT PATH: Custom PHP Backend (Unified) - Dynamic for Local Testing
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    // If local, use the existing /local_iclock proxy which points to localhost:3000. 
-    // Wait, localhost:3000 is Node, not PHP.
-    // Let's assume the user will run PHP on port 8000.
-    const path = isLocal
-      ? '/local_php/iclock/transactions.php'
-      : 'https://qssun.solar/api/iclock/transactions.php';
+    // CORRECT PATH: Custom PHP Backend (Unified)
+    const path = 'https://qssun.solar/api/iclock/transactions.php';
 
     console.log("Submitting GPS Punch:", payload, "to", path);
 

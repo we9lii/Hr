@@ -1,5 +1,5 @@
 <?php
-// transactions.php - ADMS Proxy with Redundancy and Self-Contained DB Logic
+// transactions.php - Robust ADMS Proxy with UTF-8 Support
 // Prevent any implicit output
 ob_start();
 
@@ -10,13 +10,17 @@ error_reporting(E_ALL);
 
 // Security Headers
 header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 header("Content-Type: application/json; charset=UTF-8");
 
 // Fatal Error Handler
 register_shutdown_function(function () {
     $error = error_get_last();
     if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        ob_end_clean(); // Clean any garbage output (e.g. HTML error details)
+        // Only clean if buffer active
+        while (ob_get_level())
+            ob_end_clean();
         http_response_code(500);
         echo json_encode(['error' => 'Fatal Error', 'details' => $error['message'], 'line' => $error['line']]);
         exit;
@@ -35,14 +39,38 @@ function logDebug($msg)
     }
 }
 
+// Ensure data is valid UTF-8 to prevent json_encode failures
+function utf8ize($d)
+{
+    if (is_array($d)) {
+        foreach ($d as $k => $v) {
+            $d[$k] = utf8ize($v);
+        }
+    } else if (is_string($d)) {
+        return mb_convert_encoding($d, 'UTF-8', 'UTF-8');
+    }
+    return $d;
+}
+
 function safeJsonExit($data, $code = 200)
 {
     // Clear buffer of any previous warnings/text
-    ob_end_clean();
+    while (ob_get_level())
+        ob_end_clean();
+
     // Re-start buffer to ensure clean output
     ob_start();
     http_response_code($code);
-    echo json_encode($data);
+
+    // Sanitize and Encode
+    $cleanData = utf8ize($data);
+    $json = json_encode($cleanData);
+
+    if ($json === false) {
+        $json = json_encode(['error' => 'JSON Encode Failed', 'details' => json_last_error_msg()]);
+    }
+
+    echo $json;
     ob_end_flush(); // Send to browser
     exit;
 }
@@ -55,7 +83,6 @@ function sendRequest($url, $postData)
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    // Ignore SSL for internal proxies if needed
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
     $response = curl_exec($ch);
@@ -75,7 +102,7 @@ function sendToBioTimeADMS($badge, $time, $sn, $state, $verify)
     $postData = $badge . "\t" . $state . "\t" . $verify . "\t" . $time . "\t0\t0\t\t\n";
 
     $res = sendRequest($url1, $postData);
-    logDebug("Public ADMS: Code={$res['code']} Err={$res['err']}");
+    logDebug("Public ADMS: Code={$res['code']} Body={$res['resp']} Err={$res['err']}");
 
     $success = ($res['code'] == 200 && strpos($res['resp'], 'OK') !== false);
     $source = "Public";
@@ -113,8 +140,6 @@ try {
     $pdo = new PDO($dsn, $username, $password, $options);
 } catch (PDOException $e) {
     logDebug("DB Connection FAIL: " . $e->getMessage());
-    // Proceed without DB if it fails (Fail-Open for Attendance)
-    // Or die if critical? For attendance, BioTime is critical. DB is secondary log.
 }
 
 // --- Main Logic ---
@@ -154,23 +179,17 @@ try {
         // Timezone Norm
         date_default_timezone_set('Asia/Riyadh');
         $inputTime = $data['punch_time'];
-        // Assume input is UTC if ending in Z, else treat properly
-        // Safer: If no timezone info, treat as UTC then convert
         if (strpos($inputTime, 'Z') !== false) {
-            $localTime = date('Y-m-d H:i:s', strtotime($inputTime)); // Server TZ is Riyadh set above ? No, strtotime handles Z as UTC.
-            // Wait, set TZ affects 'date'.
-            // Let's be explicit
             $d = new DateTime($inputTime);
             $d->setTimezone(new DateTimeZone('Asia/Riyadh'));
             $localTime = $d->format('Y-m-d H:i:s');
         } else {
-            // Already local or ambiguous. Trust input.
             $localTime = date('Y-m-d H:i:s', strtotime($inputTime));
         }
 
         $isRemote = $data['is_remote'] ?? false;
         $sn = $data['terminal_sn'] ?: ($isRemote ? 'AF4C232560143' : 'MANUAL');
-        $verify = $isRemote ? 1 : 15; // 1=Finger/Bio, 15=Mobile/Face?
+        $verify = $isRemote ? 1 : 15;
         $state = $data['punch_state'] ?? 0;
 
         // 1. Save to Local DB (if available)
@@ -208,7 +227,7 @@ try {
         }
 
         // 3. Send to BioTime
-        $bioSn = 'AF4C232560143'; // Virtual SN for Mobile
+        $bioSn = 'AF4C232560143';
         $bioResult = sendToBioTimeADMS($validBadge, $localTime, $bioSn, $state, $verify);
 
         safeJsonExit(['status' => 'success', 'message' => 'Recorded', 'bio_result' => $bioResult]);
