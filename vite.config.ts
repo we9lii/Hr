@@ -72,6 +72,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path.replace(/^\/local_iclock/, '/iclock')
+        },
+        '/local_php': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/local_php/, '')
         }
       }
     },

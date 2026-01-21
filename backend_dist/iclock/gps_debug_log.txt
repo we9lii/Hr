@@ -1,0 +1,2 @@
+[2026-01-21 06:34:19] DB Connection Failed (Ignoring for Test): SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-01-21 08:34:19] Try Public: Code=200 Err=

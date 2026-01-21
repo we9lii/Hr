@@ -919,7 +919,7 @@ export const submitGPSAttendance = async (
       latitude: lat,
       longitude: lng,
       punch_time: new Date().toISOString().slice(0, 19).replace('T', ' '),
-      punch_state: type === 'CHECK_IN' ? '0' : (type === 'CHECK_OUT' ? '1' : '0'),
+      punch_state: type === 'CHECK_IN' ? '0' : (type === 'CHECK_OUT' ? '1' : (type === 'BREAK_OUT' ? '2' : '3')),
       area_alias: areaAlias || '',
       accuracy: accuracy || 0,
       image_proof: 'scan_proof.jpg', // Placeholder
@@ -927,8 +927,15 @@ export const submitGPSAttendance = async (
       terminal_sn: terminalSn // Pass to PHP
     };
 
-    // CORRECT PATH: Custom PHP Backend (Unified)
-    const path = 'https://qssun.solar/api/iclock/transactions.php';
+    // CORRECT PATH: Custom PHP Backend (Unified) - Dynamic for Local Testing
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    // If local, use the existing /local_iclock proxy which points to localhost:3000. 
+    // Wait, localhost:3000 is Node, not PHP.
+    // Let's assume the user will run PHP on port 8000.
+    const path = isLocal
+      ? '/local_php/iclock/transactions.php'
+      : 'https://qssun.solar/api/iclock/transactions.php';
+
     console.log("Submitting GPS Punch:", payload, "to", path);
 
     const response = await fetch(path, {
@@ -1019,7 +1026,7 @@ export const getLastPunch = async (employeeId: string): Promise<{ type: 'CHECK_I
 
 export const submitBiometricAttendance = async (
   employeeId: string,
-  type: 'CHECK_IN' | 'CHECK_OUT',
+  type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN',
   terminalSn: string,
   verifyType: 'FINGERPRINT' | 'FACE' | 'PALM' | 'CARD' = 'FINGERPRINT'
 ): Promise<boolean> => {
@@ -1027,7 +1034,7 @@ export const submitBiometricAttendance = async (
     const payload: Record<string, any> = {
       emp_code: employeeId,
       punch_time: new Date().toISOString(),
-      punch_state: type === 'CHECK_IN' ? '0' : '1',
+      punch_state: type === 'CHECK_IN' ? '0' : (type === 'CHECK_OUT' ? '1' : (type === 'BREAK_OUT' ? '2' : '3')),
       verify_mode: verifyType
     };
     if (terminalSn) {
@@ -1480,7 +1487,7 @@ export const fetchPositions = async () => {
 // Mobile GPS Attendance
 export const registerMobilePunch = async (
   empCode: string,
-  punchState: 'CHECK_IN' | 'CHECK_OUT',
+  punchState: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN',
   timestamp: string,
   latitude?: number,
   longitude?: number,
@@ -1488,7 +1495,7 @@ export const registerMobilePunch = async (
   areaAlias?: string,
   isRemote?: boolean
 ): Promise<{ status: 'success' | 'error'; message: string }> => {
-  const stateCode = punchState === 'CHECK_IN' ? 0 : 1;
+  const stateCode = punchState === 'CHECK_IN' ? 0 : (punchState === 'CHECK_OUT' ? 1 : (punchState === 'BREAK_OUT' ? 2 : 3));
   let path = '/biometric_api/iclock/transactions.php';
 
   // Force Full URL for Native App OR Localhost Dev
