@@ -1,2 +1,8 @@
 [2026-01-21 06:34:19] DB Connection Failed (Ignoring for Test): SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
 [2026-01-21 08:34:19] Try Public: Code=200 Err=
+[2026-01-21 06:58:27] DB Connection FAIL: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-01-21 08:58:28] Public ADMS: Code=200 Err=
+[2026-01-21 06:59:26] DB Connection FAIL: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-01-21 08:59:26] Public ADMS: Code=200 Err=
+[2026-01-21 07:01:54] DB Connection FAIL: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-01-21 09:01:54] Public ADMS: Code=200 Err=
