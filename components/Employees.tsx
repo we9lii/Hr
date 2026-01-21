@@ -125,7 +125,160 @@ const Employees: React.FC = () => {
         setEditId(null);
     };
 
-    // ... (lines 127-285)
+    // Prepare Manual Log Modal
+    const handleOpenAdd = () => {
+        resetForm();
+        setIsModalOpen(true);
+    };
+
+    const handleOpenManualLog = () => {
+        // Default to first employee if available or empty
+        const defaultCode = employees.length > 0 ? employees[0].code : '';
+        const defaultName = employees.length > 0 ? employees[0].name : '';
+
+        // Format Current Date Time for Input (YYYY-MM-DDTHH:mm)
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const mins = String(now.getMinutes()).padStart(2, '0');
+        const defaultTime = `${year}-${month}-${day}T${hours}:${mins}`;
+
+        setManualData({
+            emp_code: defaultCode,
+            punch_time: defaultTime,
+            punch_state: '0',
+            purpose: ''
+        });
+        setManualSearch(defaultName);
+        setShowEmpList(false);
+        setEditLogId(null); // Reset Edit Mode
+        setIsManualModalOpen(true);
+    };
+
+    const handleEditLog = (log: any) => {
+        setEditLogId(log.id);
+        const pTime = log.timestamp.slice(0, 16); // YYYY-MM-DDTHH:mm
+
+        let pState = '0';
+        if (log.type === 'CHECK_IN') pState = '0';
+        if (log.type === 'CHECK_OUT') pState = '1';
+        if (log.type === 'BREAK_OUT') pState = '2';
+        if (log.type === 'BREAK_IN') pState = '3';
+        if (log.type === 'OVERTIME_IN') pState = '4';
+        if (log.type === 'OVERTIME_OUT') pState = '5';
+        if (log.purpose && log.purpose.includes('غياب')) pState = '100'; // Custom for UI
+
+        setManualData({
+            emp_code: log.employeeId,
+            punch_time: pTime,
+            punch_state: pState,
+            purpose: log.purpose || ''
+        });
+        setManualSearch(log.employeeName);
+        setIsManualModalOpen(true);
+    };
+
+    const handleDeleteLog = async (id: string) => {
+        if (!confirm('هل أنت متأكد من حذف هذا السجل؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+        try {
+            await deleteTransaction(id);
+            setLogs(prev => prev.filter(l => l.id !== id));
+            alert('تم الحذف بنجاح');
+        } catch (e: any) {
+            alert(e.message);
+        }
+    };
+
+    const handleManualSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        // VALIDATION: Employee is required
+        if (!manualData.emp_code) {
+            alert('⚠️ يجب اختيار موظف للعملية.');
+            return;
+        }
+
+        // VALIDATION: If Absence (State 4), Reason is mandatory
+        if (!isBulk && manualData.punch_state === '4' && !manualData.purpose.trim()) {
+            alert('⚠️ يجب كتابة سبب الغياب عند اختيار حالة "غياب".');
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            if (isBulk) {
+                const start = new Date(bulkData.startDate);
+                const end = new Date(bulkData.endDate);
+                let count = 0;
+
+                // Loop through dates
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    // Weekend Check (Fri=5, Sat=6)
+                    if (!bulkData.includeWeekends && (d.getDay() === 5 || d.getDay() === 6)) continue;
+
+                    const dateStr = d.toISOString().split('T')[0];
+
+                    // 1. Check In
+                    await createManualTransaction({
+                        emp_code: manualData.emp_code,
+                        punch_time: `${dateStr} ${bulkData.startTime}:00`,
+                        punch_state: '0', // Check In
+                        purpose: manualData.purpose || 'تحضير يدوي (فترة)'
+                    });
+
+                    // 2. Check Out
+                    await createManualTransaction({
+                        emp_code: manualData.emp_code,
+                        punch_time: `${dateStr} ${bulkData.endTime}:00`,
+                        punch_state: '1', // Check Out
+                        purpose: manualData.purpose || 'تحضير يدوي (فترة)'
+                    });
+                    count++;
+                }
+
+                alert(`تم تسجيل الحضور لـ ${count} أيام عمل بنجاح ✅`);
+            } else {
+                // Single Transaction Logic
+                // Convert local input time to "YYYY-MM-DD HH:mm:ss"
+                const pTime = manualData.punch_time.replace('T', ' ') + ':00'; // Append seconds
+
+                let finalState = manualData.punch_state;
+                let finalPurpose = manualData.purpose;
+
+                // Handle Custom "Absence" State (100)
+                if (manualData.punch_state === '100') {
+                    finalState = '0'; // Record as Check-In (or 1 Check-Out) to register event
+                    finalPurpose = `غياب: ${manualData.purpose}`;
+                }
+
+                if (editLogId) {
+                    await updateTransaction(editLogId, {
+                        punch_time: pTime,
+                        punch_state: finalState,
+                        purpose: finalPurpose
+                    });
+                    alert('تم تعديل السجل بنجاح ✅');
+                } else {
+                    await createManualTransaction({
+                        emp_code: manualData.emp_code,
+                        punch_time: pTime,
+                        punch_state: finalState,
+                        purpose: finalPurpose
+                    });
+                    alert('تم تسجيل الملاحظة / الحركة بنجاح ✅');
+                }
+            }
+
+            if (activeTab === 'logs') loadManualLogs();
+            setIsManualModalOpen(false);
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     const handleEdit = async (emp: any) => {
         // ideally we fetch full details here.
