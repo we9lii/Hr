@@ -1296,12 +1296,14 @@ interface LocalUserData {
 
 const fetchLocalUserData = async (): Promise<Map<string, LocalUserData>> => {
   try {
-    let url = '/biometric_api/api/users.php'; // Local Proxy path
-    if (Capacitor.isNativePlatform()) {
-      url = 'https://qssun.solar/api/api/users.php';
-    }
+    // Always use the absolute URL for the PHP backend (CORS is enabled)
+    const url = 'https://qssun.solar/api/api/users.php';
+
     const res = await fetch(url);
-    if (!res.ok) return new Map();
+    if (!res.ok) {
+      console.error(`Fetch Local User Data Failed: ${res.status} ${res.statusText}`);
+      return new Map();
+    }
     const data = await res.json();
     const map = new Map<string, LocalUserData>();
     if (Array.isArray(data)) {
@@ -1315,7 +1317,10 @@ const fetchLocalUserData = async (): Promise<Map<string, LocalUserData>> => {
       });
     }
     return map;
-  } catch { return new Map(); }
+  } catch (e) {
+    console.error("Fetch Local Error", e);
+    return new Map();
+  }
 };
 
 export const fetchAllEmployees = async (): Promise<any[]> => {
@@ -1475,10 +1480,8 @@ export const deleteEmployee = async (id: string | number): Promise<void> => {
 };
 
 export const updateLocalUserData = async (userId: string, email: string, allowRemote: boolean): Promise<void> => {
-  let url = '/biometric_api/api/users.php';
-  if (Capacitor.isNativePlatform()) {
-    url = 'https://qssun.solar/api/api/users.php';
-  }
+  // Always use the absolute URL for the PHP backend (CORS is enabled)
+  const url = 'https://qssun.solar/api/api/users.php';
 
   try {
     const res = await fetch(url, {
@@ -1490,7 +1493,10 @@ export const updateLocalUserData = async (userId: string, email: string, allowRe
         allow_remote: allowRemote ? 1 : 0
       })
     });
-    if (!res.ok) throw new Error("Failed to save local data");
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Failed to save local data: ${res.status} ${txt}`);
+    }
   } catch (e) {
     console.error("Local Data Save Error", e);
     // Don't block main flow if this fails
