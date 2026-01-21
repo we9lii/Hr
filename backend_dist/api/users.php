@@ -41,10 +41,20 @@ try {
     exit;
 }
 
-// GET: List all users with emails and remote status
+// GET: List all users OR specific user
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
-        $stmt = $pdo->query("SELECT user_id, email, name, allow_remote FROM biometric_users WHERE email IS NOT NULL AND email != '' GROUP BY user_id");
+        $user_id = isset($_GET['user_id']) ? $_GET['user_id'] : null;
+
+        if ($user_id) {
+            // Fetch specific user
+            $stmt = $pdo->prepare("SELECT user_id, email, name, allow_remote FROM biometric_users WHERE user_id = ?");
+            $stmt->execute([$user_id]);
+        } else {
+            // Fetch all (Previous Logic)
+            $stmt = $pdo->query("SELECT user_id, email, name, allow_remote FROM biometric_users WHERE (email IS NOT NULL AND email != '') OR allow_remote = 1 GROUP BY user_id");
+        }
+
         $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode($users);
     } catch (Exception $e) {
@@ -70,9 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = $data['name'] ?? 'Unknown';
 
     try {
-        // Upsert logic: Update existing user by user_id
-
         // Build efficient query based on what's provided
+        $stmt = null;
         if ($email !== null && $allow_remote !== null) {
             $stmt = $pdo->prepare("UPDATE biometric_users SET email = ?, allow_remote = ? WHERE user_id = ?");
             $stmt->execute([$email, $allow_remote, $user_id]);
@@ -84,13 +93,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$allow_remote, $user_id]);
         }
 
-        if ($stmt->rowCount() == 0) {
-            // If no rows updated, maybe user doesn't exist?
-            // Insert a "Virtual" user
-            // Note: This insert assumes email is provided or allows null if schema supports it (which it does via logic)
-            if ($email) {
-                $stmt = $pdo->prepare("INSERT INTO biometric_users (user_id, name, email, allow_remote, device_sn) VALUES (?, ?, ?, ?, 'WEB_ADMIN') ON DUPLICATE KEY UPDATE email = ?, allow_remote = ?");
-                $stmt->execute([$user_id, $name, $email, $allow_remote ?? 0, $email, $allow_remote ?? 0]);
+        // If no rows updated, user might not exist. Check and Insert.
+        if (!$stmt || $stmt->rowCount() == 0) {
+            $check = $pdo->prepare("SELECT id FROM biometric_users WHERE user_id = ?");
+            $check->execute([$user_id]);
+
+            if ($check->rowCount() == 0) {
+                // Ensure email is not NULL for DB constraint if needed, or empty string
+                $safeEmail = $email ?? '';
+                $safeRemote = $allow_remote ?? 0;
+
+                $stmt = $pdo->prepare("INSERT INTO biometric_users (user_id, name, email, allow_remote, device_sn) VALUES (?, ?, ?, ?, 'WEB_ADMIN')");
+                $stmt->execute([$user_id, $name, $safeEmail, $safeRemote]);
             }
         }
 

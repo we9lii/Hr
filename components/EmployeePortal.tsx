@@ -30,8 +30,30 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 type PunchType = 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_OUT' | 'BREAK_IN';
 
 const EmployeePortal: React.FC<EmployeePortalProps> = ({ user, onLogout, isDarkMode, toggleTheme }) => {
-  // Feature Flag: Enable Remote Punch via DB Setting (Dynamic)
-  const allowRemote = user.allow_remote === true;
+  // Dynamic Remote Permission (Live Fetch)
+  const [allowRemote, setAllowRemote] = useState(user.allow_remote === true);
+
+  // Fetch latest permission status on mount (REAL-TIME UPDATE)
+  useEffect(() => {
+    const fetchPermission = async () => {
+      try {
+        const url = `https://qssun.solar/api/iclock/users.php?user_id=${user.id}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const me = data[0];
+            const isAllowed = (me.allow_remote == 1 || me.allow_remote === '1' || me.allow_remote === true);
+            setAllowRemote(isAllowed);
+            console.log(`[Permission Check] User ${user.id} Remote: ${isAllowed}`);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to refresh permissions", e);
+      }
+    };
+    fetchPermission();
+  }, [user.id]);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [location, setLocation] = useState<{ lat: number, lng: number, accuracy: number } | null>(null);
