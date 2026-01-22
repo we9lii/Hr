@@ -497,14 +497,48 @@ export const fetchAttendanceLogsRange = async (
     } catch { } // Fail silent
   }
 
-  const [bridge, legacy] = await Promise.all([
-    fetchBridgeLogsRange(startDate, endDate, employeeId, deviceSn, undefined, altCode), // Pass altCode
-    fetchLegacyLogsRange(startDate, endDate, employeeId, deviceSn)
+  // Pre-fetch employees for Name Mapping (Vital for "Unknown" fix)
+  let nameMap = new Map<string, string>();
+  try {
+    const emps = await fetchAllEmployees();
+    emps.forEach(e => {
+      if (e.code) nameMap.set(String(e.code), e.name);
+      if (e.id) nameMap.set(String(e.id), e.name);
+      // Also map National IDs/SSN to Name for Mobile Punches
+      if (e.national_id) nameMap.set(String(e.national_id), e.name);
+      if (e.ssn) nameMap.set(String(e.ssn), e.name);
+      if (e.identity_num) nameMap.set(String(e.identity_num), e.name);
+    });
+  } catch (e) { console.warn("Failed to Build Name Map", e); }
+
+  const [bridge, legacy, manual] = await Promise.all([
+    fetchBridgeLogsRange(startDate, endDate, employeeId, deviceSn, undefined, altCode, nameMap), // Pass altCode and nameMap
+    fetchLegacyLogsRange(startDate, endDate, employeeId, deviceSn, undefined, nameMap), // Pass nameMap
+    fetchManualLogsRange(startDate, endDate, employeeId)
   ]);
 
-  const all = [...bridge, ...legacy];
-  const unique = new Map();
-  all.forEach(item => unique.set(item.id, item));
+  const all = [...bridge, ...legacy, ...manual];
+  const unique = new Map<string, AttendanceRecord>();
+
+  all.forEach(item => {
+    // Deduplication Key: EmpID + Timestamp (to minute/second) + Type
+    // If exact same time and type, treat as duplicate.
+    // Prefer "Real" device logs (where deviceSn != 'MANUAL') over Manual logs if conflict.
+
+    const key = `${item.employeeId}|${item.timestamp}|${item.type}`;
+
+    if (unique.has(key)) {
+      const existing = unique.get(key)!;
+      // If existing is Manual and new is Real, replace it
+      if (existing.deviceSn === 'MANUAL' && item.deviceSn !== 'MANUAL') {
+        unique.set(key, item);
+      }
+      // Else keep existing (Real prefers over Manual, or First Manual wins)
+    } else {
+      unique.set(key, item);
+    }
+  });
+
   return Array.from(unique.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
 
@@ -516,7 +550,8 @@ export const fetchBridgeLogsRange = async (
   employeeId?: string,
   deviceSn?: string,
   onChunk?: (chunk: AttendanceRecord[]) => void,
-  altCode?: string
+  altCode?: string,
+  nameMap?: Map<string, string>
 ) => {
   const SYSTEM_START_DATE = new Date('2025-12-01T00:00:00');
 
@@ -595,7 +630,7 @@ export const fetchBridgeLogsRange = async (
         if (altCode && employeeId && (String(item.emp_code) === String(altCode) || String(item.user_id) === String(altCode))) {
           item.emp_code = employeeId;
         }
-        return transformLog(item, effectiveStartDate, endDate);
+        return transformLog(item, effectiveStartDate, endDate, nameMap);
       }).filter((x): x is AttendanceRecord => x !== null);
       if (chunk.length > 0) {
         allLogs = [...allLogs, ...chunk]; // Keep local copy for final return (legacy)
@@ -620,7 +655,8 @@ export const fetchLegacyLogsRange = async (
   endDate: Date,
   employeeId?: string,
   deviceSn?: string,
-  onChunk?: (chunk: AttendanceRecord[]) => void
+  onChunk?: (chunk: AttendanceRecord[]) => void,
+  nameMap?: Map<string, string>
 ) => {
   const SYSTEM_START_DATE = new Date('2025-12-01T00:00:00');
 
@@ -658,7 +694,7 @@ export const fetchLegacyLogsRange = async (
       if (list.length === 0) break;
 
       // Transform and Stream immediately
-      const chunk = list.map(item => transformLog(item, effectiveStartDate, endDate)).filter((x): x is AttendanceRecord => x !== null);
+      const chunk = list.map(item => transformLog(item, effectiveStartDate, endDate, nameMap)).filter((x): x is AttendanceRecord => x !== null);
       if (chunk.length > 0) {
         allLogs = [...allLogs, ...chunk];
         if (onChunk) onChunk(chunk);
@@ -681,7 +717,7 @@ export const fetchLegacyLogsRange = async (
 };
 
 // Helper: Transform Raw Log to AttendanceRecord
-const transformLog = (item: any, startDate: Date, endDate: Date): AttendanceRecord | null => {
+const transformLog = (item: any, startDate: Date, endDate: Date, nameMap?: Map<string, string>): AttendanceRecord | null => {
   const uniqueKey = item.id ? String(item.id) : `log-${item.emp_code}-${item.punch_time}`;
   let tStr = String(item.punch_time || item.time || item.timestamp);
   if (tStr.includes(' ') && !tStr.includes('T')) tStr = tStr.replace(' ', 'T');
@@ -694,7 +730,24 @@ const transformLog = (item: any, startDate: Date, endDate: Date): AttendanceReco
   return {
     id: uniqueKey,
     employeeId: item.emp_code || item.user_id || 'UNKNOWN',
-    employeeName: item.emp_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Unknown Employee',
+    employeeName: (() => {
+      let name = item.emp_name || '';
+      // Check for empty, "Unknown", or just "0"
+      if (!name || name.toLowerCase() === 'unknown' || name === '0') {
+        // Try Map with multiple keys
+        // 1. Badge Code
+        let rawId = String(item.emp_code || '').trim();
+        if (rawId && nameMap?.has(rawId)) return nameMap.get(rawId)!;
+
+        // 2. User ID (DB ID)
+        rawId = String(item.user_id || item.employee || '').trim(); // item.employee is common in Manual Logs
+        if (rawId && nameMap?.has(rawId)) return nameMap.get(rawId)!;
+
+        // 3. Last Resort: National ID check (if rawId happens to be one)
+        // (Already covered if nameMap includes National IDs as keys)
+      }
+      return name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'User';
+    })(),
     timestamp: punchTime.toISOString(),
     type: parsePunchState(item.punch_state),
     method: (item.verify_type_display === 'Manual' || item.terminal_sn === 'MANUAL') ? AttendanceMethod.MANUAL :
@@ -706,10 +759,28 @@ const transformLog = (item: any, startDate: Date, endDate: Date): AttendanceReco
       lat: item.latitude ? parseFloat(item.latitude) : 0,
       lng: item.longitude ? parseFloat(item.longitude) : 0,
       accuracy: 0,
-      address: item.area_alias || item.terminal_alias || 'Main Branch'
+      address: (() => {
+        let addr = item.area_alias || item.terminal_alias || 'Main Branch';
+        // Fix: Do not fallback to terminal_alias if it is also tainted
+        if (addr && (addr.includes('undefined') || addr.trim() === '0' || addr.includes('0 undefined'))) {
+          addr = 'Device';
+        }
+        return addr;
+      })()
     },
-    deviceSn: item.terminal_sn || undefined,
-    deviceAlias: item.terminal_alias || item.area_alias || undefined
+    deviceSn: (() => {
+      let sn = item.terminal_sn || undefined;
+      if (sn && (sn.includes('undefined') || sn.trim() === '0' || sn.includes('0 undefined'))) return undefined;
+      return sn;
+    })(),
+    deviceAlias: (() => {
+      let alias = item.terminal_alias || item.area_alias || undefined;
+      // Fix: Force 'Device' if tainted
+      if (alias && (alias.includes('undefined') || alias.trim() === '0' || alias.includes('0 undefined'))) {
+        alias = 'Device';
+      }
+      return alias;
+    })()
   };
 };
 
@@ -1373,8 +1444,9 @@ export const fetchAllEmployees = async (): Promise<any[]> => {
       list.forEach((it: any) => {
         const code = String(it.emp_code || it.user_id || it.id || '').trim();
         if (!code) return;
-        const inactive = (it.is_active === false) || (it.active === false) || (String(it.status || '').toLowerCase() === 'inactive') || (String(it.employment_status || '').toLowerCase() === 'terminated');
-        if (inactive) return;
+        // Fix: Include inactive employees so their names resolve in historical reports
+        // const inactive = (it.is_active === false) || (it.active === false) || (String(it.status || '').toLowerCase() === 'inactive') || (String(it.employment_status || '').toLowerCase() === 'terminated');
+        // if (inactive) return;
 
         // Enrich default fields if missing from list view
         const name = String(it.emp_name || `${it.first_name || ''} ${it.last_name || ''}`.trim() || code);
@@ -1392,8 +1464,11 @@ export const fetchAllEmployees = async (): Promise<any[]> => {
           last_name: it.last_name || name.split(' ').slice(1).join(' '),
           // Map deeper objects if present
           dept_name: it.department ? (it.department.dept_name || it.department.name) : undefined,
+          department_id: it.department ? it.department.id : it.department_id,
           position_name: it.position ? (it.position.position_name || it.position.name) : undefined,
+          position_id: it.position ? it.position.id : it.position_id,
           area_name: (it.area && it.area.length > 0) ? (it.area[0].area_name || it.area[0].name) : undefined,
+          area_id: (it.area && it.area.length > 0) ? it.area[0].id : (it.area_id || (it.area ? it.area.id : undefined)),
           email: localData?.email || it.email, // Prefer Local Email
           allow_remote: localData?.allow_remote || false // Default False
         };
@@ -1501,7 +1576,7 @@ export const deleteEmployee = async (id: string | number): Promise<void> => {
   }
 };
 
-export const updateLocalUserData = async (userId: string, email: string, allowRemote: boolean): Promise<void> => {
+export const updateLocalUserData = async (userId: string, name: string, email: string, allowRemote: boolean): Promise<void> => {
   // Always use the absolute URL for the PHP backend (CORS is enabled)
   // User moved file to iclock folder
   const url = 'https://qssun.solar/api/iclock/users.php';
@@ -1512,6 +1587,7 @@ export const updateLocalUserData = async (userId: string, email: string, allowRe
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: userId,
+        name: name,
         email: email,
         allow_remote: allowRemote ? 1 : 0
       })
@@ -1589,5 +1665,107 @@ export const registerMobilePunch = async (
   } catch (error) {
     console.error("Mobile Punch Error:", error);
     return { status: 'error', message: 'Network Error' };
+  }
+};
+
+export const fetchManualLogsRange = async (
+  startDate: Date,
+  endDate: Date,
+  employeeId?: string
+): Promise<AttendanceRecord[]> => {
+  const fmt = (d: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const gte = fmt(startDate);
+  const lte = `${fmt(endDate)} 23:59:59`;
+
+  let path = `/biometric_api/iclock/transactions.php?mode=manual_logs&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}`;
+
+  if (Capacitor.isNativePlatform()) {
+    path = `https://qssun.solar/api/iclock/transactions.php?mode=manual_logs&punch_time__gte=${encodeURIComponent(gte)}&punch_time__lte=${encodeURIComponent(lte)}`;
+  }
+
+  if (employeeId && employeeId !== 'ALL') path += `&emp_code=${employeeId}`;
+
+  try {
+    const response = await fetch(path);
+    if (!response.ok) return [];
+
+    const raw = await response.json();
+    const list = Array.isArray(raw) ? raw : (raw.data || raw.results || []);
+
+    // Need Employee Map for Code lookups if BioTime returns IDs
+    let idMap = new Map<string, string>();
+    try {
+      // Fast fetch if cached (relying on browser cache for this call usually)
+      const emps = await fetchAllEmployees();
+      emps.forEach(e => {
+        if (e.id) idMap.set(String(e.id), String(e.code));
+        // Also map code -> code just in case
+        if (e.code) idMap.set(String(e.code), String(e.code));
+      });
+    } catch { }
+
+    const records: AttendanceRecord[] = list.map((item: any) => {
+      // BioTime Manual Logs structure:
+      // item.employee might be an ID (int) OR an Object { id, emp_code, ... } depending on API depth
+      let empCode = typeof item.employee === 'object' ? item.employee.emp_code : String(item.employee || '');
+
+      // 1. Try Map Lookup (ID -> Code)
+      if (idMap.has(empCode)) {
+        empCode = idMap.get(empCode)!;
+      } else {
+        // 2. Fallback: Try Name Match if ID failed
+        const nameToMatch = (item.first_name || item.emp_name || '').trim().toLowerCase();
+        if (nameToMatch) {
+          const found = emps.find(e => {
+            const en = (e.name || '').toLowerCase();
+            // Check exact name or loose match
+            return en === nameToMatch || en.includes(nameToMatch);
+          });
+          if (found) empCode = found.code;
+        }
+      }
+
+      // 3. Final Fallback: If still empty/undefined, keep original ID but avoid literal 'undefined'
+      if (empCode === 'undefined' || !empCode) {
+        empCode = String(item.employee || 'MANUAL-UNKNOWN');
+      }
+
+      const state = String(item.punch_state);
+      let type: 'CHECK_IN' | 'CHECK_OUT' | 'BREAK_IN' | 'BREAK_OUT' = 'CHECK_IN';
+
+      if (state === '0' || state === 'Check In') type = 'CHECK_IN';
+      else if (state === '1' || state === 'Check Out') type = 'CHECK_OUT';
+      else if (state === '2') type = 'BREAK_OUT';
+      else if (state === '3') type = 'BREAK_IN';
+
+      let reason = item.apply_reason || '';
+      if (reason === '0' || reason === 'undefined') reason = 'Manual Adjustment';
+      if (!reason) reason = 'Manual Adjustment';
+
+      return {
+        id: `man-${item.id}`,
+        employeeId: String(empCode),
+        employeeName: item.first_name || item.emp_name || 'Manual Log', // Might need enrichment later
+        timestamp: item.punch_time.replace('T', ' '),
+        type,
+        method: AttendanceMethod.MANUAL,
+        deviceSn: 'MANUAL',
+        deviceAlias: reason,
+        location: {
+          address: reason,
+          lat: 0, lng: 0
+        },
+        image: '',
+        isSynced: true
+      };
+    });
+
+    return records;
+  } catch (e) {
+    console.warn("Manual fetch failed", e);
+    return [];
   }
 };

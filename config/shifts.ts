@@ -154,13 +154,17 @@ export const DEFAULT_SHIFTS: ShiftConfig[] = [
 
 
 // Helper function to resolve config for a device
-export const getDeviceConfig = (device: { sn: string; alias?: string; }, targetDate?: Date | string) => {
+export const getDeviceConfig = (device: { sn?: string; alias?: string; }, targetDate?: Date | string) => {
     // 1. Try to find a matching rule
-    const rule = DEVICE_RULES.find(r => r.matcher(device));
+    const rule = DEVICE_RULES.find(r => (device.sn && r.matcher({ sn: device.sn, alias: device.alias })) || (device.alias && r.matcher({ sn: device.sn || '', alias: device.alias })));
 
     if (!rule) {
+        let fallback = device.alias || 'Device';
+        if (device.sn && !fallback.includes(device.sn) && fallback === 'Device') {
+            fallback = `جهاز ${device.sn}`;
+        }
         return {
-            alias: device.alias || `جهاز ${device.sn}`,
+            alias: fallback,
             shifts: DEFAULT_SHIFTS,
             shiftType: 'SPLIT'
         };
@@ -186,8 +190,11 @@ export const getDeviceConfig = (device: { sn: string; alias?: string; }, targetD
         }
     }
 
+    let finalAlias = rule.aliasOverride || device.alias || 'Device';
+    if (finalAlias === 'Device' && device.sn) finalAlias = `جهاز ${device.sn}`;
+
     return {
-        alias: rule.aliasOverride || device.alias || `جهاز ${device.sn}`,
+        alias: finalAlias,
         shifts: activeShifts && activeShifts.length > 0 ? activeShifts : DEFAULT_SHIFTS,
         shiftType: rule.shiftType || 'SPLIT'
     };

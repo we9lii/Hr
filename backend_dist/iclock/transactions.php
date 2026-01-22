@@ -438,6 +438,57 @@ try {
                 exit;
             }
         }
+
+        // --- PROXY MANUAL LOGS ---
+        if (isset($_GET['mode']) && $_GET['mode'] === 'manual_logs') {
+            $token = getBioTimeToken();
+            if (!$token)
+                safeJsonExit(['results' => []]);
+
+            $baseUrl = "http://qssun.dyndns.org:8085/att/api/manuallogs/";
+            $params = [
+                'page_size' => 1000
+            ];
+
+            if (isset($_GET['punch_time__gte']))
+                $params['punch_time__gte'] = $_GET['punch_time__gte'];
+            if (isset($_GET['punch_time__lte']))
+                $params['punch_time__lte'] = $_GET['punch_time__lte'];
+
+            // BioTime 'employee' field filtering. Try 'employee__emp_code' for code match.
+            if (isset($_GET['emp_code']) && $_GET['emp_code'] !== 'ALL') {
+                $params['employee__emp_code'] = $_GET['emp_code'];
+            }
+
+            $url = $baseUrl . "?" . http_build_query($params);
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Token ' . $token
+            ]);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+
+            $json = curl_exec($ch);
+
+            // Verify if error
+            if (curl_errno($ch)) {
+                safeJsonExit(['results' => [], 'error' => curl_error($ch)]);
+            }
+            curl_close($ch);
+
+            // Pass through the BioTime JSON directly
+            // Ensure valid JSON before echoing
+            $test = json_decode($json);
+            if ($test) {
+                echo $json;
+            } else {
+                safeJsonExit(['results' => [], 'error' => 'Invalid Upstream Response']);
+            }
+            exit;
+        }
+
         // -------------------
 
         if (!$pdo)

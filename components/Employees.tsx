@@ -336,13 +336,16 @@ const Employees: React.FC = () => {
                 await updateEmployee(editId, payload);
                 // NEW: Update Local Data (Email + Remote Access)
                 // Use emp_code as the ID for mapping usually, but check if we need user_id (emp_code is usually the key)
-                await updateLocalUserData(formData.emp_code, formData.email, formData.allow_remote);
+                const fullName = `${formData.first_name} ${formData.last_name || ''}`.trim();
+                await updateLocalUserData(formData.emp_code, fullName, formData.email, formData.allow_remote);
 
                 alert('تم تحديث بيانات الموظف بنجاح 🔄');
             } else {
                 await createEmployee(payload);
+                await createEmployee(payload);
                 // NEW: Save Local Data for New Employee too
-                await updateLocalUserData(formData.emp_code, formData.email, formData.allow_remote);
+                const fullName = `${formData.first_name} ${formData.last_name || ''}`.trim();
+                await updateLocalUserData(formData.emp_code, fullName, formData.email, formData.allow_remote);
 
                 alert('تم إضافة الموظف بنجاح ✅');
             }
